@@ -1,0 +1,13 @@
+# Prototyp: manifest.json
+
+```json
+{
+  "name": "LaTeX iPad PWA",
+  "short_name": "LaTeXApp",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#2d2d2d",
+  "icons": []
+}
+```
