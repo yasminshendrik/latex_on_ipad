@@ -9,7 +9,7 @@ Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusamm
 | Story | Thema | Status | Hinweise |
 | :--- | :--- | :---: | :--- |
 | 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl per Prompt und lokale Speicherung vorhanden; Dashboard-UI und Repo-Erstellung fehlen |
-| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | GitHub-Tree-/File-Download und Token-Handling im Browser sind vorhanden; echter OAuth-Token-Austausch und Commit-/Push-Funktion fehlen |
+| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | Browser-seitiger OAuth PKCE-Flow ist integriert; GitHub OAuth Client ID und App-Registrierung müssen konfiguriert werden; echte Commit-/Push-Funktion fehlt |
 | 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln funktioniert; Erstellen neuer Branches fehlt |
 | 2 | VFS & Monaco Editor | Umgesetzt | IndexedDB, Editor, Dateibaum und Auto-Save sind aktiv |
 | 2.1 | Responsive UI & Sidebar | Umgesetzt | Layout und Toggle für iPad sind umgesetzt |
@@ -18,10 +18,10 @@ Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusamm
 | 4.1 | Azure Build & API Auth | Ausstehend | Docker/TeXLive-Setup und sichere Auth fehlen |
 | 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Container und Toggle vorhanden; Resize/komplette Vorschau fehlen |
 | 5 | KI-Schreibassistenz | Ausstehend | UI und Syntaxschutz fehlen |
-| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Service Worker registriert und Asset-Caching aktiv; Offline-Queue und Sync-Workflow fehlen |
+| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Offlinespeicherung und PWA-Shell sind aktiv; Remote-Sync und Upload-Queue bleiben online-abhängig |
 | 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
 
-**Aktueller Stand der App:** Der Code enthält ein funktionales lokales Editor-Setup mit Monaco, VFS in IndexedDB, GitHub-Branch-Laden, Sidebar-Toggle und Service-Worker-Registrierung. Die wichtigsten offenen Aspekte sind der sichere OAuth-Token-Austausch, Commit-/Push-Funktion, Linting, Vorschau, Azure/PDF-Backend und die Offline-/Sync-Queue.
+**Aktueller Stand der App:** Die App ist ein Offline-fähiges, lokal editierbares LaTeX-Frontend mit Monaco, VFS in IndexedDB, GitHub-Branch-Laden, Sidebar-Toggle, PWA-Caching und einem browser-seitigen OAuth PKCE-Flow für GitHub. Der eigentliche GitHub-Upload, das sichere Token-Handling und die geplanten Erweiterungen bleiben Teil der nächsten Iteration.
 
 ---
 
@@ -36,12 +36,13 @@ Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusamm
   - [ ] Initialisierung neuer GitHub-Repos – ausstehend
 
 ### Story 1 & 1.1: GitHub-Authentifizierung & Repository-Synchronisation
-* **Ziel:** sichere Anbindung an GitHub und Datei-Download mit der GitHub API
+* **Ziel:** sichere, browser-basierte GitHub-Anbindung mit PKCE und Datei-Download aus der GitHub API
 * **Status:** Teilweise umgesetzt
 * **Teilschritte:**
-  - [x] Token-Handling im Session-Kontext – umgesetzt
+  - [x] PKCE-Flow im Browser inklusive `code_verifier`/`code_challenge` – umgesetzt
+  - [x] Token-Austausch über GitHub OAuth-Endpoint – umgesetzt
   - [x] Baum/Dateien über GitHub API laden – umgesetzt
-  - [ ] sicherer OAuth-Token-Austausch und Commit-/Push-Funktion – ausstehend
+  - [ ] echte Commit-/Push-Funktion via API – ausstehend
 
 ### Story 1.4: Branching & In-App Branch-Switching
 * **Ziel:** Branches verwalten und wechseln
@@ -99,12 +100,12 @@ Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusamm
   - [ ] Prompt/Syntax-Schutz – ausstehend
 
 ### Story 6: Offline-Fähigkeit, lokale Speicherung & Sync-Queue
-* **Ziel:** globale Offline-Unterstützung mit lokaler Synchronsierung
+* **Ziel:** globale Offline-Unterstützung mit lokaler Synchronsierung und online-abhängiger GitHub-Interaktion
 * **Status:** Teilweise umgesetzt
 * **Teilschritte:**
   - [x] Service Worker registriert und Asset-Caching – umgesetzt
   - [x] lokales Auto-Save in IndexedDB – umgesetzt
-  - [ ] Online-Sync-Queue und KI-Commit-Message-Generierung – ausstehend
+  - [ ] online-abhängige Remote-Sync und KI-Commit-Message-Generierung – ausstehend
 
 ### Story 8: Undo / Rollback auf frühere Commits
 * **Ziel:** Historie und Rollback von Zuständen
@@ -116,4 +117,4 @@ Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusamm
 
 ---
 
-Wichtiger Hinweis: Änderungen an Anforderungen oder Story-Definitionen werden nur von der Nutzerin / dem Nutzer ergänzt. Die bisher dokumentierten Stories dienen als Basis für die technische Umsetzung und sind nicht ohne ausdrückliche Vorgabe zu erweitern.
+Wichtiger Hinweis: Die App ist offline-fähig für lokalen Arbeitsstand und lokale Editor-Operationen, aber GitHub-Sync und GitHub-Authentifizierung benötigen eine Online-Verbindung. Änderungen an Anforderungen oder Story-Definitionen werden nur von der Nutzerin / dem Nutzer ergänzt.

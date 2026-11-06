@@ -1,11 +1,74 @@
 const DB_NAME = 'LaTeXPWA_VFS';
 const DB_VERSION = 2;
-const GITHUB_CLIENT_ID = 'Iv2li...';
+const GITHUB_CLIENT_ID = 'YOUR_GITHUB_OAUTH_CLIENT_ID';
+const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
+const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 
 function getVFSKey(path, repo = '', branch = '') {
     const repoId = repo || 'local';
     const branchId = branch || 'main';
     return `${repoId}::${branchId}::${path}`;
+}
+
+function base64UrlEncode(bytes) {
+    let binary = '';
+    bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+    });
+    return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+}
+
+function generateCodeVerifier(length = 64) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+    let result = '';
+    for (let i = 0; i < length; i += 1) {
+        result += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return result;
+}
+
+async function generateCodeChallenge(verifier) {
+    const encoder = new TextEncoder();
+    const digest = await crypto.subtle.digest('SHA-256', encoder.encode(verifier));
+    const bytes = new Uint8Array(digest);
+    return base64UrlEncode(bytes);
+}
+
+function redirectUri() {
+    return window.location.origin + window.location.pathname;
+}
+
+async function exchangeCodeForToken(authCode) {
+    const verifier = sessionStorage.getItem('gh_pkce_verifier');
+    if (!verifier) {
+        throw new Error('PKCE code_verifier fehlt. Bitte erneut anmelden.');
+    }
+
+    const response = await fetch(GITHUB_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            client_id: GITHUB_CLIENT_ID,
+            code: authCode,
+            code_verifier: verifier,
+            redirect_uri: redirectUri()
+        })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.access_token) {
+        throw new Error(data.error_description || data.error || 'GitHub OAuth-Token-Austausch fehlgeschlagen.');
+    }
+
+    sessionStorage.removeItem('gh_pkce_verifier');
+    sessionStorage.removeItem('gh_oauth_state');
+    return data.access_token;
 }
 
 function openDB() {
@@ -122,10 +185,21 @@ require(['vs/editor/editor.main'], async function() {
 
     const urlParams = new URLSearchParams(window.location.search);
     const authCode = urlParams.get('code');
+    const authState = urlParams.get('state');
+
     if (authCode) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-        accessToken = authCode;
-        sessionStorage.setItem('gh_token', accessToken);
+        const storedState = sessionStorage.getItem('gh_oauth_state');
+        if (storedState && authState !== storedState) {
+            alert('OAuth-Request-Status konnte nicht verifiziert werden. Bitte erneut anmelden.');
+        } else {
+            window.history.replaceState({}, document.title, window.location.pathname);
+            try {
+                accessToken = await exchangeCodeForToken(authCode);
+                sessionStorage.setItem('gh_token', accessToken);
+            } catch (error) {
+                alert(error.message);
+            }
+        }
     }
 
     let initialContent = await loadFileFromVFS(currentFilePath, currentRepo, currentBranch);
@@ -166,19 +240,38 @@ require(['vs/editor/editor.main'], async function() {
         repoLabel.textContent = currentRepo;
     }
 
-    loginBtn.addEventListener('click', () => {
+    loginBtn.addEventListener('click', async () => {
         if (accessToken) {
             sessionStorage.removeItem('gh_token');
             alert('Erfolgreich von GitHub abgemeldet.');
             window.location.reload();
         } else {
-            triggerOAuthLogin();
+            await triggerOAuthLogin();
         }
     });
 
-    function triggerOAuthLogin() {
-        const redirectUri = window.location.origin + window.location.pathname;
-        window.location.href = `https://github.com/login/oauth/authorize?client_id=${GITHUB_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=repo`;
+    async function triggerOAuthLogin() {
+        if (GITHUB_CLIENT_ID === 'YOUR_GITHUB_OAUTH_CLIENT_ID') {
+            alert('GitHub OAuth Client ID fehlt. Bitte in js/app.js setzen und eine GitHub OAuth App registrieren.');
+            return;
+        }
+
+        const verifier = generateCodeVerifier();
+        sessionStorage.setItem('gh_pkce_verifier', verifier);
+        const codeChallenge = await generateCodeChallenge(verifier);
+        const state = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
+        sessionStorage.setItem('gh_oauth_state', state);
+
+        const params = new URLSearchParams({
+            client_id: GITHUB_CLIENT_ID,
+            redirect_uri: redirectUri(),
+            scope: 'repo',
+            state,
+            code_challenge: codeChallenge,
+            code_challenge_method: 'S256'
+        });
+
+        window.location.href = `${GITHUB_AUTH_URL}?${params.toString()}`;
     }
 
     repoLabel.addEventListener('click', async () => {
@@ -191,7 +284,7 @@ require(['vs/editor/editor.main'], async function() {
 
         if (!accessToken) {
             alert('Sicherheits-Check: Bitte melde dich bei GitHub an, um auf das Repository zuzugreifen.');
-            triggerOAuthLogin();
+            await triggerOAuthLogin();
             return;
         }
 

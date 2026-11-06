@@ -3,7 +3,7 @@
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel
-Offline-Nutzung über Service-Worker-Caching und lokale Speicherung unterstützen; eine lokale Sync-Queue ist weiterhin offen.
+Offline-Nutzung über Service-Worker-Caching und lokale Speicherung unterstützen; Remote-Sync bleibt weiterhin online-abhängig.
 
 ## Teilschritte
 - [x] Service Worker für Asset-Caching registriert und aktiviert. **Umgesetzt**
@@ -11,4 +11,4 @@ Offline-Nutzung über Service-Worker-Caching und lokale Speicherung unterstütze
 - [ ] Online-Sync-Workflow mit KI-generierten Commit-Messages. **Ausstehend**
 
 ## Anmerkung
-Der Service Worker ist jetzt registriert und cachet die Kern-Assets. Die echte Offline-Synchronisierung und die Queue für spätere Uploads fehlen noch.
+Die App kann lokal im Browser arbeiten und den Arbeitsstand in IndexedDB speichern. GitHub-Sync und Uploads erfordern eine aktive Internetverbindung, da die GitHub-API dafür offline nicht erreichbar ist.
