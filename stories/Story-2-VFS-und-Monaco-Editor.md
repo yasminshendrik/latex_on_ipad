@@ -11,4 +11,4 @@ IndexedDB (`LaTeXPWA_VFS`), Monaco Editor, Auto-Save.
 ## Teilschritte
 - [x] IndexedDB-Struktur für VFS — Objektspeicher für Dateien und Projekte. **Umgesetzt**
 - [x] Monaco Editor — Syntax-Highlighting für LaTeX und Auto-Save bei Inaktivität. **Umgesetzt**
-- [x] Multi-File-Ansicht und Dateibaum-Navigation — Dynamische Auswahl im Sidebar-Dateibaum. **Umgesetzt**
+- [x] Multi-File-Ansicht und Dateibaum-Navigation — dynamische Auswahl im Sidebar-Dateibaum. **Umgesetzt**

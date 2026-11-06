@@ -9,6 +9,9 @@ Eine zentrale Projektübersicht beim Start der App, um zwischen mehreren LaTeX-R
 IndexedDB zur lokalen Speicherung der Projekt-Metadaten; GitHub API zum Abrufen und Erstellen von Repositories.
 
 ## Teilschritte
-- [ ] **0.1 Startbildschirm / Dashboard-UI** — Visuelle Kartenansicht aller gespeicherten Projekte. **Ausstehend**
-- [x] **0.2 Projekte hinzufügen / auswählen** — `owner/repo` per Prompt eingeben und im `localStorage` speichern. **Umgesetzt**
-- [ ] **0.3 Neue Repositories über GitHub API initialisieren** — Repository inklusive initialer `main.tex` automatisch anlegen. **Ausstehend**
+- [ ] **0.1 Startbildschirm / Dashboard-UI** — visuelle Kartenansicht aller gespeicherten Projekte. **Ausstehend**
+- [x] **0.2 Projekte hinzufügen / auswählen** — `owner/repo` per Prompt eingeben und im lokalen Speicher speichern. **Umgesetzt**
+- [ ] **0.3 Neue Repositories über GitHub API initialisieren** — automatisch ein Repo inklusive `main.tex` anlegen. **Ausstehend**
+
+## Anmerkung
+Der aktuelle Code hat die Auswahl und lokale Speicherung, aber noch kein echtes Dashboard und keine projektweite Initialisierung.

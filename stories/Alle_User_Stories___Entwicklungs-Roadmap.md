@@ -1,22 +1,119 @@
-# Stories – Gesamtübersicht
+# User Stories, Entwicklungs-Roadmap & Statusübersicht
 
-Diese Datei ist die zentrale Statusübersicht. Die Anforderungen und Details stehen jeweils in den verlinkten Story-Dateien. Statusangaben müssen dem tatsächlich implementierten Code entsprechen.
+Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusammen. Jede Story ist in ihre spezifischen Teilschritte unterteilt und mit ihrem aktuellen Implementierungsstand im Projektstatus dokumentiert. Die Statusangaben müssen mit dem tatsächlich vorhandenen Code und den vorhandenen UI-Features übereinstimmen.
 
-| Story | Thema | Status | Detail |
-|---|---|---|---|
-| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | [Story 0](Story-0-Multi-Projekt-Dashboard.md) |
-| 1 & 1.1 | GitHub-Authentifizierung & Repository-Synchronisation | Teilweise umgesetzt | [Story 1](Story-1-GitHub-Auth-und-Sync.md) |
-| 1.4 | Branching & In-App Branch-Switching | Teilweise umgesetzt | [Story 1.4](Story-1.4-Branching-und-Switching.md) |
-| 2 | Virtuelles Dateisystem & Monaco Editor | Umgesetzt | [Story 2](Story-2-VFS-und-Monaco-Editor.md) |
-| 2.1 | Responsive UI & ausblendbare Sidebar | Umgesetzt | [Story 2.1](Story-2.1-Responsive-UI-und-Sidebar.md) |
-| 3 | Client-seitiges Linting (TexLab WASM) | Ausstehend | [Story 3](Story-3-Client-seitiges-Linting.md) |
-| 4 | Live-Vorschau (KaTeX) | Ausstehend | [Story 4](Story-4-Live-Vorschau.md) |
-| 4.1 | Azure Build & PDF-API-Authentifizierung | Ausstehend | [Story 4.1](Story-4.1-Azure-Build-und-API-Auth.md) |
-| 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | [Story 4.2](Story-4.2-Responsive-PDF-Vorschau.md) |
-| 5 | KI-Schreibassistenz für Text & Stil | Ausstehend | [Story 5](Story-5-KI-Schreibassistenz.md) |
-| 6 | Offline-Fähigkeit, lokale Speicherung & Sync-Queue | Teilweise umgesetzt | [Story 6](Story-6-Offline-und-Sync.md) |
-| 8 | Commit-Historie & Undo/Rollback | Ausstehend | [Story 8](Story-8-Commit-Historie-und-Undo.md) |
+---
 
-**Statusdefinition:** „Umgesetzt“ bedeutet, dass alle aufgeführten Teilschritte erledigt sind; „Teilweise umgesetzt“ bedeutet, dass erledigte und ausstehende Teilschritte vorhanden sind; „Ausstehend“ bedeutet, dass die Story noch nicht implementiert ist.
+## 📊 Gesamtübersicht
 
-Bei neuen Anforderungen, Änderungen oder Teilumsetzungen sind die Story-Datei und diese Übersicht gemeinsam aktuell zu halten. Bereits abgeschlossene Stories nicht nachträglich umschreiben: neue Anforderungen daran als neue Stories dokumentieren.
+| Story | Thema | Status | Hinweise |
+| :--- | :--- | :---: | :--- |
+| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl per Prompt und lokale Speicherung vorhanden; Dashboard-UI und Repo-Erstellung fehlen |
+| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | GitHub-Tree-/File-Download und Token-Handling vorhanden; Commit-/Push-Funktion fehlt |
+| 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln funktioniert; Erstellen neuer Branches fehlt |
+| 2 | VFS & Monaco Editor | Umgesetzt | IndexedDB, Editor, Dateibaum und Auto-Save sind aktiv |
+| 2.1 | Responsive UI & Sidebar | Umgesetzt | Layout und Toggle für iPad sind umgesetzt |
+| 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Editor-Markierung fehlen |
+| 4 | Live-Vorschau | Ausstehend | KaTeX-Integration fehlt |
+| 4.1 | Azure Build & API Auth | Ausstehend | Docker/TeXLive-Setup und sichere Auth fehlen |
+| 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Container und Toggle vorhanden; Resize/komplette Vorschau fehlen |
+| 5 | KI-Schreibassistenz | Ausstehend | UI und Syntaxschutz fehlen |
+| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Service Worker registriert; Offline-Queue und Sync-Workflow fehlen |
+| 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
+
+**Übersicht der aktuellen App:** Der aktuelle Stand des Codes enthält ein funktionsfähiges lokales Editor-Setup mit Monaco, VFS in IndexedDB, GitHub-Branch-Laden, Sidebar-Toggle und Service-Worker-Registrierung. Die größten offenen Baustellen sind OAuth-Token-Handling im echten Flow, Commit-/Push-Funktion, Linting, Vorschau, Azure/PDF-Backend und die Offline-/Sync-Queue.
+
+---
+
+## 📑 Detaillierte Story-Status
+
+### Story 0: Multi-Projekt-Dashboard & Startbildschirm
+* **Ziel:** zentrale Projektübersicht beim Start der App
+* **Status:** Teilweise umgesetzt
+* **Teilschritte:***
+  - [ ] Startbildschirm / Dashboard-UI – ausstehend
+  - [x] Repo-Auswahl per Prompt und lokalem Speicher – umgesetzt
+  - [ ] Initialisierung neuer GitHub-Repos – ausstehend
+
+### Story 1 & 1.1: GitHub-Authentifizierung & Repository-Synchronisation
+* **Ziel:** sichere But-Flow-Integration und Datei-Download mit GitHub API
+* **Status:** Teilweise umgesetzt
+* **Teilschritte:***
+  - [x] OAuth-Token-Handling im Session-Kontext – umgesetzt
+  - [x] Baum/Dateien über GitHub API laden – umgesetzt
+  - [ ] Commit- & Push-Funktion – ausstehend
+
+### Story 1.4: Branching & In-App Branch-Switching
+* **Ziel:** Branches verwalten und wechseln
+* **Status:** Teilweise umgesetzt
+* **Teilschritte:***
+  - [x] Laden vorhandener Remote-Branches – umgesetzt
+  - [ ] Erstellen neuer Branches – ausstehend
+  - [x] UI-Dropdown für Branch-Wechsel – umgesetzt
+
+### Story 2: Virtuelles Dateisystem (VFS) & Monaco Editor
+* **Ziel:** lokales VFS und Monaco-Editor für LaTeX
+* **Status:** Umgesetzt
+* **Teilschritte:***
+  - [x] IndexedDB/VFS-Struktur – umgesetzt
+  - [x] Monaco-Editor und Auto-Save – umgesetzt
+  - [x] Datei-Baum und Multi-File-Ansicht – umgesetzt
+
+### Story 2.1: Responsive UI & Sidebar
+* **Ziel:** iPad-optimierte Oberfläche
+* **Status:** Umgesetzt
+* **Teilschritte:***
+  - [x] Responsive Layout – umgesetzt
+  - [x] Sidebar-Toggle – umgesetzt
+  - [x] Touch-optimierte Toolbar – umgesetzt
+
+### Story 3: Client-seitiges Linting (TexLab WASM)
+* **Ziel:** LaTeX-Fehlererkennung in Echtzeit
+* **Status:** Ausstehend
+* **Teilschritte:***
+  - [ ] WASM/Web-Worker-Setup – ausstehend
+  - [ ] Editor/Worker-Kommunikation – ausstehend
+  - [ ] Marker-Ausgabe im Editor – ausstehend
+
+### Story 4: Live-Vorschau und Kompilierung
+* **Ziel:** KaTeX- und PDF-Vorschau
+* **Status:** Ausstehend
+* **Teilschritte:***
+  - [ ] KaTeX-Formel-Vorschau – ausstehend
+  - [ ] Azure/Docker-PDF-Backend – ausstehend
+  - [ ] API-Endpoint und Auth – ausstehend
+
+### Story 4.2: Responsive PDF-Vorschau
+* **Ziel:** Vorschau-Panel im UI
+* **Status:** Teilweise umgesetzt
+* **Teilschritte:***
+  - [x] Container und Toggle – umgesetzt
+  - [ ] Resizable Split-Pane – ausstehend
+  - [x] Standard-Unsichtbarkeit / Button-Handling – umgesetzt
+
+### Story 5: KI-Schreibassistenz
+* **Ziel:** Textverbesserung unter Beibehaltung der LaTeX-Syntax
+* **Status:** Ausstehend
+* **Teilschritte:***
+  - [ ] UI für Prüfung/Umformulierung – ausstehend
+  - [ ] Prompt/Syntax-Schutz – ausstehend
+
+### Story 6: Offline-Fähigkeit, lokale Speicherung & Sync-Queue
+* **Ziel:** globale Offline-Unterstützung mit lokaler Synchronsierung
+* **Status:** Teilweise umgesetzt
+* **Teilschritte:***
+  - [x] Service Worker registrieren und Asset-Caching – umgesetzt
+  - [x] lokales Auto-Save in IndexedDB – umgesetzt
+  - [ ] Online-Sync-Queue und KI-Commit-Message-Generierung – ausstehend
+
+### Story 8: Undo / Rollback auf frühere Commits
+* **Ziel:** Historie und Rollback von Zuständen
+* **Status:** Ausstehend
+* **Teilschritte:***
+  - [ ] Commit-Historie UI – ausstehend
+  - [ ] Laden früherer Commit-Zustände – ausstehend
+  - [ ] Verknüpfung mit GitHub-API – ausstehend
+
+---
+
+Wichtiger Hinweis: Änderungen an Anforderungen oder Story-Definitionen werden nur von der Nutzerin / dem Nutzer ergänzt. Die bisher dokumentierten Stories dienen als Basis für die technische Umsetzung und sind nicht ohne ausdrückliche Vorgabe zu erweitern.

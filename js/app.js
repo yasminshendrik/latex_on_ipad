@@ -1,6 +1,12 @@
 const DB_NAME = 'LaTeXPWA_VFS';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const GITHUB_CLIENT_ID = 'Iv2li...';
+
+function getVFSKey(path, repo = '', branch = '') {
+    const repoId = repo || 'local';
+    const branchId = branch || 'main';
+    return `${repoId}::${branchId}::${path}`;
+}
 
 function openDB() {
     return new Promise((resolve, reject) => {
@@ -9,34 +15,57 @@ function openDB() {
         request.onsuccess = () => resolve(request.result);
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
-            if (!db.objectStoreNames.contains('files')) {
-                db.createObjectStore('files', { keyPath: 'path' });
+            if (db.objectStoreNames.contains('files')) {
+                db.deleteObjectStore('files');
             }
-            if (!db.objectStoreNames.contains('projects')) {
-                db.createObjectStore('projects', { keyPath: 'repo' });
+            if (db.objectStoreNames.contains('projects')) {
+                db.deleteObjectStore('projects');
             }
+            db.createObjectStore('files', { keyPath: 'id' });
+            db.createObjectStore('projects', { keyPath: 'repo' });
         };
     });
 }
 
-async function saveFileToVFS(path, content) {
+async function saveFileToVFS(path, content, repo = localStorage.getItem('gh_current_repo') || '', branch = localStorage.getItem('gh_current_branch') || 'main') {
     const db = await openDB();
+    const record = {
+        id: getVFSKey(path, repo, branch),
+        path,
+        repo,
+        branch,
+        content,
+        updatedAt: new Date().toISOString()
+    };
+
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['files'], 'readwrite');
         const store = transaction.objectStore('files');
-        const request = store.put({ path: path, content: content, updatedAt: new Date().toISOString() });
+        const request = store.put(record);
         request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
     });
 }
 
-async function loadFileFromVFS(path) {
+async function loadFileFromVFS(path, repo = localStorage.getItem('gh_current_repo') || '', branch = localStorage.getItem('gh_current_branch') || 'main') {
     const db = await openDB();
     return new Promise((resolve, reject) => {
         const transaction = db.transaction(['files'], 'readonly');
         const store = transaction.objectStore('files');
-        const request = store.get(path);
-        request.onsuccess = () => resolve(request.result ? request.result.content : null);
+        const key = getVFSKey(path, repo, branch);
+        const request = store.get(key);
+
+        request.onsuccess = () => {
+            if (request.result) {
+                resolve(request.result.content);
+                return;
+            }
+
+            const legacyRequest = store.get(path);
+            legacyRequest.onsuccess = () => resolve(legacyRequest.result ? legacyRequest.result.content : null);
+            legacyRequest.onerror = () => reject(legacyRequest.error);
+        };
+
         request.onerror = () => reject(request.error);
     });
 }
@@ -85,6 +114,12 @@ require(['vs/editor/editor.main'], async function() {
     let currentBranch = localStorage.getItem('gh_current_branch') || 'main';
     let accessToken = sessionStorage.getItem('gh_token');
 
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('./sw.js').catch(() => {
+            console.warn('Service Worker konnte nicht registriert werden.');
+        });
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const authCode = urlParams.get('code');
     if (authCode) {
@@ -93,10 +128,10 @@ require(['vs/editor/editor.main'], async function() {
         sessionStorage.setItem('gh_token', accessToken);
     }
 
-    let initialContent = await loadFileFromVFS(currentFilePath);
+    let initialContent = await loadFileFromVFS(currentFilePath, currentRepo, currentBranch);
     if (!initialContent) {
         initialContent = '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}';
-        await saveFileToVFS(currentFilePath, initialContent);
+        await saveFileToVFS(currentFilePath, initialContent, currentRepo, currentBranch);
     }
 
     const editor = monaco.editor.create(document.getElementById('editor-container'), {
@@ -107,11 +142,15 @@ require(['vs/editor/editor.main'], async function() {
     });
 
     let saveTimeout;
+    const persistEditorContent = async () => {
+        await saveFileToVFS(currentFilePath, editor.getValue(), currentRepo, currentBranch);
+    };
+
     editor.onDidChangeModelContent(() => {
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(async () => {
-            await saveFileToVFS(currentFilePath, editor.getValue());
-        }, 1000);
+            await persistEditorContent();
+        }, 800);
     });
 
     const loginBtn = document.getElementById('gh-login-btn');
@@ -159,7 +198,7 @@ require(['vs/editor/editor.main'], async function() {
         await loadRepositoryWorkspace(currentRepo, currentBranch, accessToken);
     });
 
-    branchSelect.addEventListener('click', async () => {
+    branchSelect.addEventListener('change', async () => {
         if (!currentRepo || !accessToken) return;
         currentBranch = branchSelect.value;
         localStorage.setItem('gh_current_branch', currentBranch);
@@ -174,7 +213,7 @@ require(['vs/editor/editor.main'], async function() {
         }
 
         const fileListEl = document.getElementById('file-list');
-        fileListEl.innerHTML = '<div style="padding: 10px; color: #888;">Lade Repository & Baum...</div>';
+        fileListEl.innerHTML = '<div style="padding: 10px; color: #888;">Lade Repository &amp; Baum...</div>';
 
         try {
             const branches = await fetchGitHubBranches(owner, repo, token);
@@ -200,10 +239,10 @@ require(['vs/editor/editor.main'], async function() {
                     item.classList.add('active');
                     currentFilePath = file.path;
 
-                    let content = await loadFileFromVFS(file.path);
+                    let content = await loadFileFromVFS(file.path, repoFullName, branch);
                     if (!content) {
                         content = await fetchGitHubFileContent(file.url, token);
-                        await saveFileToVFS(file.path, content);
+                        await saveFileToVFS(file.path, content, repoFullName, branch);
                     }
                     editor.setValue(content);
                 });
@@ -212,7 +251,7 @@ require(['vs/editor/editor.main'], async function() {
             });
             alert(`Projekt "${repoFullName}" (Branch: ${branch}) erfolgreich geladen!`);
         } catch (err) {
-            fileListEl.innerHTML = `<div style="padding: 10px; color: #ff6b6b;">Fehler: ${err.message}</div>`;
+            fileListEl.textContent = `Fehler: ${err.message}`;
         }
     }
 
@@ -232,7 +271,7 @@ require(['vs/editor/editor.main'], async function() {
     });
 
     document.getElementById('save-btn').addEventListener('click', async () => {
-        await saveFileToVFS(currentFilePath, editor.getValue());
+        await persistEditorContent();
         alert(`Datei "${currentFilePath}" lokal in IndexedDB gespeichert!`);
     });
 });

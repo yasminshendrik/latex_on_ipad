@@ -6,9 +6,9 @@
 Git-Branches direkt aus dem aktiven Editor verwalten und wechseln.
 
 ## Technische Komponenten
-GitHub References API (`GET /refs/heads`, `POST /refs`).
+GitHub References API (`GET /refs/heads`, `POST /refs`)
 
 ## Teilschritte
 - [x] Vorhandene Remote-Branches abrufen — `fetchGitHubBranches` lädt verfügbare Branches. **Umgesetzt**
 - [ ] Neue Branches über die API erstellen. **Ausstehend**
-- [x] Branch über UI-Dropdown wechseln — `#branch-select` lädt den Workspace bei Auswahl neu. **Umgesetzt**
+- [x] Branch über UI-Dropdown wechseln — `change`-Event und Datenladen sind implementiert. **Umgesetzt**
