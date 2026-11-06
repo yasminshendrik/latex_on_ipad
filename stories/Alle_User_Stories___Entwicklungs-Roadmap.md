@@ -1,120 +1,27 @@
 # User Stories, Entwicklungs-Roadmap & Statusübersicht
 
-Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusammen. Jede Story ist in ihre spezifischen Teilschritte unterteilt und mit ihrem aktuellen Implementierungsstand im Projektstatus dokumentiert. Die Statusangaben müssen mit dem tatsächlich vorhandenen Code und den vorhandenen UI-Features übereinstimmen.
+Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschritte stehen in den verlinkten Story-Dateien. Statusangaben müssen dem tatsächlich implementierten Code entsprechen; Login- und OAuth-Funktionen gelten erst nach erfolgreichem Test mit einer korrekt registrierten App als produktiv verifiziert.
 
----
-
-## 📊 Gesamtübersicht
+## Gesamtübersicht
 
 | Story | Thema | Status | Hinweise |
-| :--- | :--- | :---: | :--- |
-| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl per Prompt und lokale Speicherung vorhanden; Dashboard-UI und Repo-Erstellung fehlen |
-| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | Browser-seitiger OAuth PKCE-Flow ist integriert; GitHub OAuth Client ID und App-Registrierung müssen konfiguriert werden; echte Commit-/Push-Funktion fehlt |
-| 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln funktioniert; Erstellen neuer Branches fehlt |
-| 2 | VFS & Monaco Editor | Umgesetzt | IndexedDB, Editor, Dateibaum und Auto-Save sind aktiv |
-| 2.1 | Responsive UI & Sidebar | Umgesetzt | Layout und Toggle für iPad sind umgesetzt |
-| 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Editor-Markierung fehlen |
+|---|---|---|---|
+| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl per Prompt vorhanden; Dashboard und Repo-Erstellung fehlen |
+| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | PKCE, verpflichtende State-Prüfung und Callback-Verarbeitung implementiert; echte Client-ID, exakte Callback-Konfiguration und Ende-zu-Ende-Test fehlen; Commit/Push fehlt |
+| 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln; Branch-Erstellung fehlt |
+| 2 | VFS & Monaco Editor | Umgesetzt | IndexedDB, Editor, Dateibaum und lokales Auto-Save vorhanden |
+| 2.1 | Responsive UI & Sidebar | Umgesetzt | Responsives Layout und Sidebar-Toggle vorhanden |
+| 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Marker fehlen |
 | 4 | Live-Vorschau | Ausstehend | KaTeX-Integration fehlt |
-| 4.1 | Azure Build & API Auth | Ausstehend | Docker/TeXLive-Setup und sichere Auth fehlen |
-| 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Container und Toggle vorhanden; Resize/komplette Vorschau fehlen |
+| 4.1 | Azure Build & PDF API | Ausstehend | PDF-Build-Backend/API fehlt |
+| 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Panel und Toggle vorhanden; Resize und echte Vorschau fehlen |
 | 5 | KI-Schreibassistenz | Ausstehend | UI und Syntaxschutz fehlen |
-| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Offlinespeicherung und PWA-Shell sind aktiv; Remote-Sync und Upload-Queue bleiben online-abhängig |
+| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Lokale Bearbeitung/Speicherung und Service-Worker-Shell; GitHub-Login und Remote-Sync benötigen Internet; Sync-Queue fehlt |
 | 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
 
-**Aktueller Stand der App:** Die App ist ein Offline-fähiges, lokal editierbares LaTeX-Frontend mit Monaco, VFS in IndexedDB, GitHub-Branch-Laden, Sidebar-Toggle, PWA-Caching und einem browser-seitigen OAuth PKCE-Flow für GitHub. Der eigentliche GitHub-Upload, das sichere Token-Handling und die geplanten Erweiterungen bleiben Teil der nächsten Iteration.
+## Aktueller App-Stand
+Die App ist ein lokal editierbarer LaTeX-Editor mit Monaco, IndexedDB-VFS, GitHub-Repository-/Branch-Lesen und einer PWA-Shell. Der OAuth-Code enthält PKCE S256, kryptografisch zufällige Werte, verpflichtende `state`-Prüfung und Callback-Aufräumlogik. Der Flow ist **noch nicht produktiv verifiziert**: Die Client-ID ist ein Platzhalter und die GitHub-App-Registrierung/Callback-URL müssen passend konfiguriert und getestet werden.
 
----
+Offline möglich sind lokale Bearbeitung und lokale Speicherung bereits geladener Inhalte. Anmeldung, erstmaliges Laden und Remote-Speichern erfordern eine Internetverbindung. Die Client-ID ist öffentlich; ein Client Secret darf nicht in den statischen Frontend-Code gelangen.
 
-## 📑 Detaillierte Story-Status
-
-### Story 0: Multi-Projekt-Dashboard & Startbildschirm
-* **Ziel:** zentrale Projektübersicht beim Start der App
-* **Status:** Teilweise umgesetzt
-* **Teilschritte:**
-  - [ ] Startbildschirm / Dashboard-UI – ausstehend
-  - [x] Repo-Auswahl per Prompt und lokalem Speicher – umgesetzt
-  - [ ] Initialisierung neuer GitHub-Repos – ausstehend
-
-### Story 1 & 1.1: GitHub-Authentifizierung & Repository-Synchronisation
-* **Ziel:** sichere, browser-basierte GitHub-Anbindung mit PKCE und Datei-Download aus der GitHub API
-* **Status:** Teilweise umgesetzt
-* **Teilschritte:**
-  - [x] PKCE-Flow im Browser inklusive `code_verifier`/`code_challenge` – umgesetzt
-  - [x] Token-Austausch über GitHub OAuth-Endpoint – umgesetzt
-  - [x] Baum/Dateien über GitHub API laden – umgesetzt
-  - [ ] echte Commit-/Push-Funktion via API – ausstehend
-
-### Story 1.4: Branching & In-App Branch-Switching
-* **Ziel:** Branches verwalten und wechseln
-* **Status:** Teilweise umgesetzt
-* **Teilschritte:**
-  - [x] Laden vorhandener Remote-Branches – umgesetzt
-  - [ ] Erstellen neuer Branches – ausstehend
-  - [x] UI-Dropdown für Branch-Wechsel – umgesetzt
-
-### Story 2: Virtuelles Dateisystem (VFS) & Monaco Editor
-* **Ziel:** lokales VFS und Monaco-Editor für LaTeX
-* **Status:** Umgesetzt
-* **Teilschritte:**
-  - [x] IndexedDB/VFS-Struktur – umgesetzt
-  - [x] Monaco-Editor und Auto-Save – umgesetzt
-  - [x] Datei-Baum und Multi-File-Ansicht – umgesetzt
-
-### Story 2.1: Responsive UI & Sidebar
-* **Ziel:** iPad-optimierte Oberfläche
-* **Status:** Umgesetzt
-* **Teilschritte:**
-  - [x] Responsive Layout – umgesetzt
-  - [x] Sidebar-Toggle – umgesetzt
-  - [x] Touch-optimierte Toolbar – umgesetzt
-
-### Story 3: Client-seitiges Linting (TexLab WASM)
-* **Ziel:** LaTeX-Fehlererkennung in Echtzeit
-* **Status:** Ausstehend
-* **Teilschritte:**
-  - [ ] WASM/Web-Worker-Setup – ausstehend
-  - [ ] Editor/Worker-Kommunikation – ausstehend
-  - [ ] Marker-Ausgabe im Editor – ausstehend
-
-### Story 4: Live-Vorschau und Kompilierung
-* **Ziel:** KaTeX- und PDF-Vorschau
-* **Status:** Ausstehend
-* **Teilschritte:**
-  - [ ] KaTeX-Formel-Vorschau – ausstehend
-  - [ ] Azure/Docker-PDF-Backend – ausstehend
-  - [ ] API-Endpoint und Auth – ausstehend
-
-### Story 4.2: Responsive PDF-Vorschau
-* **Ziel:** Vorschau-Panel im UI
-* **Status:** Teilweise umgesetzt
-* **Teilschritte:**
-  - [x] Container und Toggle – umgesetzt
-  - [ ] Resizable Split-Pane – ausstehend
-  - [x] Standard-Unsichtbarkeit / Button-Handling – umgesetzt
-
-### Story 5: KI-Schreibassistenz
-* **Ziel:** Textverbesserung unter Beibehaltung der LaTeX-Syntax
-* **Status:** Ausstehend
-* **Teilschritte:**
-  - [ ] UI für Prüfung/Umformulierung – ausstehend
-  - [ ] Prompt/Syntax-Schutz – ausstehend
-
-### Story 6: Offline-Fähigkeit, lokale Speicherung & Sync-Queue
-* **Ziel:** globale Offline-Unterstützung mit lokaler Synchronsierung und online-abhängiger GitHub-Interaktion
-* **Status:** Teilweise umgesetzt
-* **Teilschritte:**
-  - [x] Service Worker registriert und Asset-Caching – umgesetzt
-  - [x] lokales Auto-Save in IndexedDB – umgesetzt
-  - [ ] online-abhängige Remote-Sync und KI-Commit-Message-Generierung – ausstehend
-
-### Story 8: Undo / Rollback auf frühere Commits
-* **Ziel:** Historie und Rollback von Zuständen
-* **Status:** Ausstehend
-* **Teilschritte:**
-  - [ ] Commit-Historie UI – ausstehend
-  - [ ] Laden früherer Commit-Zustände – ausstehend
-  - [ ] Verknüpfung mit GitHub-API – ausstehend
-
----
-
-Wichtiger Hinweis: Die App ist offline-fähig für lokalen Arbeitsstand und lokale Editor-Operationen, aber GitHub-Sync und GitHub-Authentifizierung benötigen eine Online-Verbindung. Änderungen an Anforderungen oder Story-Definitionen werden nur von der Nutzerin / dem Nutzer ergänzt.
+Für neue oder geänderte Produktanforderungen gilt: Sie werden ausschließlich von der Nutzerin/vom Nutzer vorgegeben. Die betroffene Story-Datei und diese Übersicht sind gemeinsam zu aktualisieren.

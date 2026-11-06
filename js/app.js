@@ -21,32 +21,31 @@ function base64UrlEncode(bytes) {
         .replace(/=+$/g, '');
 }
 
-function generateCodeVerifier(length = 64) {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    let result = '';
-    for (let i = 0; i < length; i += 1) {
-        result += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return result;
+function generateSecureRandomValue() {
+    // 32 random bytes encode to a 43-character base64url string, valid for PKCE
+    // verifiers and sufficiently unpredictable for the OAuth state parameter.
+    return base64UrlEncode(crypto.getRandomValues(new Uint8Array(32)));
 }
 
 async function generateCodeChallenge(verifier) {
     const encoder = new TextEncoder();
     const digest = await crypto.subtle.digest('SHA-256', encoder.encode(verifier));
-    const bytes = new Uint8Array(digest);
-    return base64UrlEncode(bytes);
+    return base64UrlEncode(new Uint8Array(digest));
 }
 
 function redirectUri() {
     return window.location.origin + window.location.pathname;
 }
 
-async function exchangeCodeForToken(authCode) {
-    const verifier = sessionStorage.getItem('gh_pkce_verifier');
-    if (!verifier) {
-        throw new Error('PKCE code_verifier fehlt. Bitte erneut anmelden.');
-    }
+function clearOAuthCallbackParameters() {
+    const url = new URL(window.location.href);
+    ['code', 'state', 'error', 'error_description', 'error_uri'].forEach((key) => {
+        url.searchParams.delete(key);
+    });
+    window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`);
+}
 
+async function exchangeCodeForToken(authCode, verifier) {
     const response = await fetch(GITHUB_TOKEN_URL, {
         method: 'POST',
         headers: {
@@ -61,13 +60,17 @@ async function exchangeCodeForToken(authCode) {
         })
     });
 
-    const data = await response.json();
-    if (!response.ok || !data.access_token) {
-        throw new Error(data.error_description || data.error || 'GitHub OAuth-Token-Austausch fehlgeschlagen.');
+    let data;
+    try {
+        data = await response.json();
+    } catch (error) {
+        throw new Error('GitHub hat keine gültige JSON-Antwort beim Token-Austausch geliefert.');
     }
 
-    sessionStorage.removeItem('gh_pkce_verifier');
-    sessionStorage.removeItem('gh_oauth_state');
+    if (!response.ok || !data.access_token) {
+        throw new Error(data.error_description || data.error || `GitHub OAuth-Token-Austausch fehlgeschlagen (HTTP ${response.status}).`);
+    }
+
     return data.access_token;
 }
 
@@ -186,18 +189,35 @@ require(['vs/editor/editor.main'], async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const authCode = urlParams.get('code');
     const authState = urlParams.get('state');
+    const authError = urlParams.get('error');
 
-    if (authCode) {
+    if (authCode || authError) {
         const storedState = sessionStorage.getItem('gh_oauth_state');
-        if (storedState && authState !== storedState) {
-            alert('OAuth-Request-Status konnte nicht verifiziert werden. Bitte erneut anmelden.');
+        const verifier = sessionStorage.getItem('gh_pkce_verifier');
+        clearOAuthCallbackParameters();
+
+        if (!storedState || !authState || authState !== storedState) {
+            sessionStorage.removeItem('gh_pkce_verifier');
+            sessionStorage.removeItem('gh_oauth_state');
+            alert('OAuth-Status konnte nicht verifiziert werden. Bitte starte die Anmeldung erneut.');
+        } else if (authError) {
+            sessionStorage.removeItem('gh_pkce_verifier');
+            sessionStorage.removeItem('gh_oauth_state');
+            alert(`GitHub-Anmeldung abgebrochen oder fehlgeschlagen: ${authError}`);
+        } else if (!verifier) {
+            sessionStorage.removeItem('gh_oauth_state');
+            alert('PKCE code_verifier fehlt. Bitte starte die Anmeldung erneut.');
         } else {
-            window.history.replaceState({}, document.title, window.location.pathname);
             try {
-                accessToken = await exchangeCodeForToken(authCode);
+                accessToken = await exchangeCodeForToken(authCode, verifier);
                 sessionStorage.setItem('gh_token', accessToken);
             } catch (error) {
+                accessToken = null;
+                sessionStorage.removeItem('gh_token');
                 alert(error.message);
+            } finally {
+                sessionStorage.removeItem('gh_pkce_verifier');
+                sessionStorage.removeItem('gh_oauth_state');
             }
         }
     }
@@ -251,27 +271,39 @@ require(['vs/editor/editor.main'], async function() {
     });
 
     async function triggerOAuthLogin() {
-        if (GITHUB_CLIENT_ID === 'YOUR_GITHUB_OAUTH_CLIENT_ID') {
+        if (!GITHUB_CLIENT_ID || GITHUB_CLIENT_ID === 'YOUR_GITHUB_OAUTH_CLIENT_ID') {
             alert('GitHub OAuth Client ID fehlt. Bitte in js/app.js setzen und eine GitHub OAuth App registrieren.');
             return;
         }
 
-        const verifier = generateCodeVerifier();
+        if (!window.crypto || !window.crypto.subtle || !window.crypto.getRandomValues) {
+            alert('Dieser Browser unterstützt die sicheren OAuth-Funktionen nicht. Öffne die App über HTTPS und versuche es erneut.');
+            return;
+        }
+
+        const verifier = generateSecureRandomValue();
+        const state = generateSecureRandomValue();
         sessionStorage.setItem('gh_pkce_verifier', verifier);
-        const codeChallenge = await generateCodeChallenge(verifier);
-        const state = crypto.getRandomValues(new Uint32Array(1))[0].toString(16);
         sessionStorage.setItem('gh_oauth_state', state);
 
-        const params = new URLSearchParams({
-            client_id: GITHUB_CLIENT_ID,
-            redirect_uri: redirectUri(),
-            scope: 'repo',
-            state,
-            code_challenge: codeChallenge,
-            code_challenge_method: 'S256'
-        });
+        try {
+            const codeChallenge = await generateCodeChallenge(verifier);
+            const params = new URLSearchParams({
+                client_id: GITHUB_CLIENT_ID,
+                redirect_uri: redirectUri(),
+                scope: 'repo',
+                state,
+                response_type: 'code',
+                code_challenge: codeChallenge,
+                code_challenge_method: 'S256'
+            });
 
-        window.location.href = `${GITHUB_AUTH_URL}?${params.toString()}`;
+            window.location.assign(`${GITHUB_AUTH_URL}?${params.toString()}`);
+        } catch (error) {
+            sessionStorage.removeItem('gh_pkce_verifier');
+            sessionStorage.removeItem('gh_oauth_state');
+            alert('Der sichere OAuth-Login konnte nicht gestartet werden.');
+        }
     }
 
     repoLabel.addEventListener('click', async () => {

@@ -6,13 +6,16 @@
 Browser-basierte GitHub-Anbindung mit OAuth PKCE und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
 
 ## Technische Komponenten
-GitHub OAuth App mit PKCE; `sessionStorage` für die verifizierte Session; GitHub Tree-/File-API.
+GitHub OAuth App mit PKCE; `sessionStorage` für die Session-Daten (PKCE verifier, state und Zugriffstoken); GitHub Tree-/File-API.
 
 ## Teilschritte
-- [x] **1.1 PKCE-Flow im Browser** — Code-Verifier und Code-Challenge werden im Browser erzeugt und beim Redirect validiert. **Umgesetzt**
-- [x] **1.2 Token-Austausch über GitHub OAuth-Endpoint** — der Code wird gegen ein Access Token ausgetauscht. **Umgesetzt**
-- [x] **1.3 Dateien und Baumstruktur abrufen** — Git-Trees und Rohdateien über die GitHub API werden geladen. **Umgesetzt**
-- [ ] **1.4 Commit- & Push-Funktion via API** — echte GitHub-Uploads bleiben offen. **Ausstehend**
+- [x] PKCE-Verifier und S256-Challenge mit kryptografisch sicherem Browser-Zufall erzeugen. **Im Code umgesetzt; Produktivtest mit registrierter OAuth App ausstehend**
+- [x] OAuth-`state` bei Callback zwingend prüfen; Callback-Parameter nach Verarbeitung aus der URL entfernen. **Im Code umgesetzt**
+- [x] Authorization Code am GitHub Token-Endpunkt mit Client-ID, Code, Redirect-URI und PKCE-Verifier austauschen; kein Client Secret im Frontend verwenden. **Im Code umgesetzt; Browser-/GitHub-Konfigurationstest ausstehend**
+- [x] Dateien und Baumstruktur über die GitHub API abrufen. **Umgesetzt**
+- [ ] Commit- & Push-Funktion via API. **Ausstehend**
 
-## Anmerkung
-Der aktuelle Stand setzt auf `OAuth App + PKCE` in der statischen App. Dafür muss eine GitHub OAuth App registriert und die Client-ID in `js/app.js` gesetzt werden. Die App selbst bleibt offline-fähig für lokale Bearbeitung; GitHub-Sync und Uploads sind online-abhängig.
+## Einrichtung und Einschränkungen
+Für den Login muss eine GitHub OAuth App registriert sein. Die Client-ID in `js/app.js` ist derzeit ein Platzhalter und muss durch die echte Client-ID ersetzt werden. Die registrierte Callback-URL muss exakt der URL entsprechen, die `redirectUri()` erzeugt. Das Access Token wird in `sessionStorage` abgelegt und ist damit für JavaScript im App-Origin zugänglich; PKCE verhindert nicht, dass XSS ein bereits ausgegebenes Token ausliest.
+
+Der OAuth-Flow benötigt eine Online-Verbindung. Lokales Bearbeiten und Speichern in IndexedDB funktionieren unabhängig davon; Repository-Zugriff über GitHub benötigt Netzwerk und ein gültiges Token.
