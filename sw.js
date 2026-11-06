@@ -1,6 +1,3 @@
-# Prototyp: sw.js
-
-```javascript
 const CACHE_NAME = 'latex-pwa-v1';
 const ASSETS = [
   './index.html',
@@ -19,4 +16,3 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((response) => response || fetch(event.request))
   );
 });
-```
