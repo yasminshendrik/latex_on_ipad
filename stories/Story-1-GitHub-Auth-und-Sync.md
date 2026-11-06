@@ -6,12 +6,12 @@
 Sichere Anbindung an GitHub via OAuth2 und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
 
 ## Technische Komponenten
-OAuth2-Flow im Browser; `sessionStorage` für das Token-Handling; GitHub Tree- und Datei-API.
+Browser-basierte GitHub-API-Anbindung; `sessionStorage` für die vorübergehende Token-Speicherung; Tree-/File-Downloads.
 
 ## Teilschritte
-- [x] **1.1 OAuth-Flow & Token-Handling** — ein Token wird kurzzeitig im `sessionStorage` verwaltet. **Umgesetzt**
+- [x] **1.1 Token-Handling im Session-Kontext** — ein Token wird kurzfristig im `sessionStorage` verwaltet. **Umgesetzt**
 - [x] **1.2 Dateien und Baumstruktur abrufen** — Git-Trees und Rohdateien über die GitHub API werden geladen. **Umgesetzt**
-- [ ] **1.3 Commit- & Push-Funktion via API** — geänderte Dateien an GitHub senden. **Ausstehend**
+- [ ] **1.3 sicherer OAuth-Token-Austausch und Commit-/Push-Funktion via API** — ein echter Backend-/Server-Flow ist noch nicht umgesetzt. **Ausstehend**
 
 ## Anmerkung
-Der aktuelle Stand zeigt die API-Anbindung für lesen, aber noch keinen sicheren OAuth-Token-Austausch gegen ein echtes Access Token über einen Server- oder Backend-Flow. Das ist für einen abgeschlossenen Auth-Status noch nicht ausreichend.
+Der aktuelle Stand ermöglicht das Lesen von Repository-Dateien und das Arbeiten mit Branches, aber kein sicherer OAuth-Token-Austausch und keine echte Push-/Commit-Funktion im Browser allein.

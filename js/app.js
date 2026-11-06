@@ -15,14 +15,14 @@ function openDB() {
         request.onsuccess = () => resolve(request.result);
         request.onupgradeneeded = (event) => {
             const db = event.target.result;
-            if (db.objectStoreNames.contains('files')) {
-                db.deleteObjectStore('files');
+
+            if (!db.objectStoreNames.contains('files')) {
+                db.createObjectStore('files', { keyPath: 'id' });
             }
-            if (db.objectStoreNames.contains('projects')) {
-                db.deleteObjectStore('projects');
+
+            if (!db.objectStoreNames.contains('projects')) {
+                db.createObjectStore('projects', { keyPath: 'repo' });
             }
-            db.createObjectStore('files', { keyPath: 'id' });
-            db.createObjectStore('projects', { keyPath: 'repo' });
         };
     });
 }
