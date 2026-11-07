@@ -28,6 +28,13 @@
     #monaco-editor { position: absolute; inset: 0; display: none; }
     #preview-container { display: none; width: 40%; overflow: auto; padding: 16px; color: #222; background: #fff; }
     #preview-container.visible { display: block; }
+    #github-login-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
+    #github-login-dialog::backdrop { background: rgba(0, 0, 0, .75); }
+    #github-login-dialog label { display: block; margin-top: 12px; }
+    #github-login-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
+    #github-login-dialog a { color: #8bcfff; }
+    #github-login-error { color: #ffaaaa; min-height: 1.4em; }
+    .login-actions { display: flex; gap: 8px; flex-wrap: wrap; }
     footer { flex: 0 0 auto; padding: 5px 10px; text-align: right; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
     @media (orientation: portrait) {
       header { justify-content: flex-start; }
@@ -61,6 +68,23 @@
     </section>
     <section id="preview-container"><h3>PDF-Vorschau</h3><p>Die PDF-Vorschau ist noch nicht eingerichtet.</p></section>
   </main>
+  <dialog id="github-login-dialog" aria-labelledby="github-login-title" aria-describedby="github-login-help">
+    <h2 id="github-login-title">Mit GitHub verbinden</h2>
+    <p id="github-login-help">Gib ein Fine-grained Personal Access Token ein, kein GitHub-Passwort. Du kannst es für diese App-Adresse in Apple Passwörter speichern und von dort einfügen.</p>
+    <p><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Fine-grained Token bei GitHub erstellen</a></p>
+    <form id="github-login-form" method="post">
+      <label for="github-username">GitHub-Benutzername (optional, für den Passwortmanager)</label>
+      <input id="github-username" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false">
+      <label for="github-token">Fine-grained Personal Access Token</label>
+      <input id="github-token" name="password" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+      <p>Das Token bleibt bis zur Abmeldung oder zum Ende der Sitzung im Sitzungsspeicher dieser App.</p>
+      <p id="github-login-error" role="alert"></p>
+      <div class="login-actions">
+        <button id="github-login-submit" type="submit">Verbinden</button>
+        <button id="github-login-cancel" type="button">Abbrechen</button>
+      </div>
+    </form>
+  </dialog>
   <footer>Offline-Editor wird initialisiert…</footer>
   <script src="js/build-info.js"></script>
   <script src="js/diagnostic.js"></script>

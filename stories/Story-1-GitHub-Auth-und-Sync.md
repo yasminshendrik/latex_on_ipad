@@ -2,6 +2,8 @@
 
 **Gesamtstatus: Teilweise umgesetzt**
 
+**Historischer Login:** Der nachfolgend beschriebene GitHub-App-OAuth-Flow wurde durch den [PAT-Login in Story 1.6](Story-1.6-Fine-grained-PAT-Login.md) ersetzt und ist nicht mehr aktiv. Die ursprüngliche Beschreibung bleibt zur Dokumentation erhalten; der frühere Token-Austausch war nicht Ende-zu-Ende verifiziert.
+
 ## Ziel
 Browser-basierte GitHub-Anbindung mit GitHub App + OAuth PKCE und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
 

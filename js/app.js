@@ -1,8 +1,6 @@
 (() => {
   'use strict';
 
-  const CLIENT_ID = 'Ov23likSsFVYCyWAjIWR';
-  const REDIRECT_URI = 'https://yasminshendrik.github.io/latex_on_ipad/';
   const DB_NAME = 'LaTeXPWA_VFS';
   const DB_VERSION = 1;
   const DEFAULT_DOCUMENT = '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}';
@@ -11,12 +9,22 @@
   const textarea = document.getElementById('editor');
   const monacoHost = document.getElementById('monaco-editor');
   const loginButton = document.getElementById('gh-login-btn');
+  const loginDialog = document.getElementById('github-login-dialog');
+  const loginForm = document.getElementById('github-login-form');
+  const tokenInput = document.getElementById('github-token');
+  const loginError = document.getElementById('github-login-error');
+  const loginSubmit = document.getElementById('github-login-submit');
   const repoLabel = document.getElementById('repo-label');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
   let repoName = localStorage.getItem('gh_current_repo') || '';
   let branchName = localStorage.getItem('gh_current_branch') || 'main';
   let token = sessionStorage.getItem('gh_token') || '';
+  if (token && !token.startsWith('github_pat_')) {
+    sessionStorage.removeItem('gh_token');
+    token = '';
+  }
+  let loginRequest;
   let activePath = 'main.tex';
   let dbPromise;
   let monacoEditor;
@@ -148,72 +156,16 @@
     }
   }
 
-  async function sha256Base64Url(value) {
-    const bytes = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest('SHA-256', bytes);
-    let binary = '';
-    new Uint8Array(digest).forEach((byte) => { binary += String.fromCharCode(byte); });
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-  function randomValue() {
-    const bytes = crypto.getRandomValues(new Uint8Array(32));
-    let binary = '';
-    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-  }
-  async function startLogin() {
-    if (!crypto.subtle || !crypto.getRandomValues) throw new Error('Für GitHub Login wird ein aktueller Browser mit sicherer HTTPS-Verbindung benötigt.');
-    try {
-      const verifier = randomValue();
-      const state = randomValue();
-      sessionStorage.setItem('gh_pkce_verifier', verifier);
-      sessionStorage.setItem('gh_oauth_state', state);
-      const challenge = await sha256Base64Url(verifier);
-      const params = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, state, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' });
-      window.location.assign(`https://github.com/login/oauth/authorize?${params}`);
-    } catch (error) {
-      sessionStorage.removeItem('gh_pkce_verifier');
-      sessionStorage.removeItem('gh_oauth_state');
-      throw new Error(`GitHub-Anmeldung konnte nicht gestartet werden: ${error.message}`);
-    }
-  }
-  async function handleOAuthCallback() {
+  function clearLegacyOAuthCallback() {
     const callbackUrl = new URL(location.href);
     const params = callbackUrl.searchParams;
-    const code = params.get('code');
-    const state = params.get('state');
-    const oauthError = params.get('error');
-    if (!code && !state && !oauthError) return;
-    let callbackError;
-    try {
-      const savedState = sessionStorage.getItem('gh_oauth_state');
-      const verifier = sessionStorage.getItem('gh_pkce_verifier');
-      if (!state || !savedState || state !== savedState || !verifier) throw new Error('OAuth-Prüfung fehlgeschlagen. Bitte erneut anmelden.');
-      if (oauthError) {
-        const description = params.get('error_description');
-        throw new Error(`GitHub-Anmeldung fehlgeschlagen: ${description || oauthError}`);
-      }
-      if (!code) throw new Error('GitHub-Rücksprung enthält keinen Authorization Code. Bitte erneut anmelden.');
-
-      const response = await fetch('https://github.com/login/oauth/access_token', {
-        method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: CLIENT_ID, code, code_verifier: verifier, redirect_uri: REDIRECT_URI })
-      });
-      let data;
-      try { data = await response.json(); }
-      catch (_) { throw new Error('GitHub lieferte beim Token-Austausch keine lesbare Antwort.'); }
-      if (!response.ok || !data || !data.access_token) throw new Error(data?.error_description || data?.error || 'GitHub konnte kein Zugriffstoken ausstellen.');
-      sessionStorage.setItem('gh_token', data.access_token);
-      token = data.access_token;
-    } catch (error) {
-      callbackError = error;
-    } finally {
-      sessionStorage.removeItem('gh_pkce_verifier');
-      sessionStorage.removeItem('gh_oauth_state');
+    sessionStorage.removeItem('gh_pkce_verifier');
+    sessionStorage.removeItem('gh_oauth_state');
+    if (params.has('code') || params.has('state') || params.has('error')) {
       ['code', 'state', 'error', 'error_description', 'error_uri'].forEach((key) => callbackUrl.searchParams.delete(key));
       history.replaceState({}, document.title, `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+      setStatus('Der frühere OAuth-Login ist nicht mehr aktiv. Bitte mit einem Fine-grained Token verbinden.');
     }
-    if (callbackError) throw callbackError;
   }
   async function githubApi(path, accept = 'application/vnd.github+json') {
     const response = await fetch(`https://api.github.com${path}`, {
@@ -270,12 +222,65 @@
     setStatus(`Repo geladen: ${repoName} (${branchName})`);
   }
 
-  loginButton.addEventListener('click', async () => {
+  loginButton.addEventListener('click', () => {
     if (token) {
       sessionStorage.removeItem('gh_token'); token = ''; loginButton.textContent = 'GitHub Login'; loginButton.style.background = '';
       setStatus('Von GitHub abgemeldet.'); return;
     }
-    try { await startLogin(); } catch (error) { showError(error.message); }
+    loginError.textContent = '';
+    loginDialog.showModal();
+  });
+  document.getElementById('github-login-cancel').addEventListener('click', () => loginDialog.close());
+  loginDialog.addEventListener('close', () => {
+    if (loginRequest) loginRequest.abort();
+    loginRequest = undefined;
+    loginSubmit.disabled = false;
+    loginForm.reset();
+    loginError.textContent = '';
+  });
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (loginRequest) return;
+    const candidate = tokenInput.value.trim();
+    if (!/^github_pat_[A-Za-z0-9_]+$/.test(candidate)) {
+      loginError.textContent = 'Bitte ein Fine-grained Personal Access Token eingeben, kein GitHub-Passwort.';
+      return;
+    }
+    const controller = new AbortController();
+    loginRequest = controller;
+    loginSubmit.disabled = true;
+    loginError.textContent = '';
+    try {
+      let response;
+      try {
+        response = await fetch('https://api.github.com/user', {
+          headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${candidate}`, 'X-GitHub-Api-Version': '2022-11-28' },
+          signal: controller.signal
+        });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        throw new Error('GitHub ist nicht erreichbar. Bitte Internetverbindung prüfen und erneut versuchen.');
+      }
+      if (controller.signal.aborted) return;
+      if (response.status === 401) throw new Error('GitHub hat das Token abgelehnt. Bitte Gültigkeit und Ablaufdatum prüfen.');
+      if (!response.ok) throw new Error(`GitHub konnte das Token nicht prüfen (HTTP ${response.status}). Bitte später erneut versuchen.`);
+      sessionStorage.setItem('gh_token', candidate);
+      token = candidate;
+      loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
+      loginDialog.close();
+      setStatus('Mit GitHub verbunden.');
+      if (repoName) {
+        try { await loadRepository(); }
+        catch (error) { fileList.textContent = error.message; setStatus('GitHub verbunden, Repository konnte nicht geladen werden.'); }
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) loginError.textContent = error.message;
+    } finally {
+      if (loginRequest === controller) {
+        loginRequest = undefined;
+        loginSubmit.disabled = false;
+      }
+    }
   });
   repoLabel.addEventListener('click', async () => {
     const value = prompt('GitHub Repository angeben (Format: owner/repo):', repoName || 'owner/repo');
@@ -306,12 +311,12 @@
 
   async function initialize() {
     try {
+      clearLegacyOAuthCallback();
       const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => null);
       const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) || localStorage.getItem('latex_ipad_document');
       textarea.value = saved?.content ?? fallback ?? DEFAULT_DOCUMENT;
       await loadMonaco();
       await registerServiceWorker();
-      await handleOAuthCallback();
       if (repoName) repoLabel.textContent = repoName;
       branchSelect.value = branchName;
       if (token) {

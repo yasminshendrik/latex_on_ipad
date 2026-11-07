@@ -63,7 +63,7 @@
     document.head.appendChild(style);
     panel = document.createElement('section'); panel.id = 'technical-log'; panel.setAttribute('aria-label', 'Technisches Diagnoseprotokoll');
     const heading = document.createElement('div'); heading.id = 'technical-log-heading';
-    const title = document.createElement('span'); title.id = 'technical-log-title'; title.textContent = 'Technisches Protokoll (letzte Ereignisse; keine OAuth-Geheimnisse)';
+    const title = document.createElement('span'); title.id = 'technical-log-title'; title.textContent = 'Technisches Protokoll (letzte Ereignisse; keine Tokens)';
     const clearButton = document.createElement('button'); clearButton.type = 'button'; clearButton.textContent = 'Leeren'; clearButton.setAttribute('aria-label', 'Aktuelles Protokoll leeren'); clearButton.addEventListener('click', clearEntries);
     const copyButton = document.createElement('button'); copyButton.type = 'button'; copyButton.textContent = 'Alles kopieren'; copyButton.setAttribute('aria-label', 'Alle sichtbaren Protokolleinträge kopieren'); copyButton.addEventListener('click', copyAll);
     messageNode = document.createElement('span'); messageNode.id = 'technical-log-message'; messageNode.setAttribute('role', 'status');
@@ -72,27 +72,6 @@
     panel.append(heading, list);
     const footer = document.querySelector('footer'); document.body.insertBefore(panel, footer || null); render();
   }
-  function getSafeHeader(headers, name) {
-    try {
-      if (headers instanceof Headers) return headers.get(name) || '';
-      if (Array.isArray(headers)) { const pair = headers.find((item) => String(item[0]).toLowerCase() === name.toLowerCase()); return pair ? String(pair[1]) : ''; }
-      const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === name.toLowerCase()); return key ? String(headers[key]) : '';
-    } catch (_) { return ''; }
-  }
-  function logSafeOAuthRequest(init, requestUrl, method) {
-    if (requestUrl.hostname !== 'github.com' || requestUrl.pathname !== '/login/oauth/access_token') return;
-    let body = null;
-    try { if (typeof (init && init.body) === 'string') body = JSON.parse(init.body); } catch (_) { /* Never log the raw body. */ }
-    const expectedRedirect = `${window.location.origin}${window.location.pathname}`;
-    const redirect = body && typeof body.redirect_uri === 'string' ? body.redirect_uri : '';
-    let redirectMatches = false;
-    try { const actual = new URL(redirect); const expected = new URL(expectedRedirect); redirectMatches = actual.origin === expected.origin && actual.pathname.replace(/\/$/, '') === expected.pathname.replace(/\/$/, ''); } catch (_) { /* Invalid/absent URI does not match. */ }
-    const clientId = body && typeof body.client_id === 'string' ? body.client_id : '';
-    log(`OAuth-Anfrage (bereinigt): ${String(method).toUpperCase()} ${requestUrl.origin}${requestUrl.pathname}; Content-Type: ${getSafeHeader(init && init.headers, 'Content-Type') || '(nicht angegeben)'}; Accept: ${getSafeHeader(init && init.headers, 'Accept') || '(nicht angegeben)'}.`);
-    log(`OAuth-Konfiguration: client_id ${clientId ? `vorhanden (${clientId})` : 'fehlt'}; redirect_uri ${redirect || 'fehlt'}; entspricht aktueller Callback-Adresse: ${redirectMatches ? 'ja' : 'NEIN'}.`);
-    log(`OAuth-Payload-Felder: ${body ? Object.keys(body).sort().join(', ') : '(kein lesbarer JSON-Body)'}; authorization code ${body && body.code ? 'vorhanden, Wert verborgen' : 'fehlt'}; PKCE code_verifier ${body && body.code_verifier ? 'vorhanden, Wert verborgen' : 'fehlt'}.`);
-  }
-
   loadEntries();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addPanel, { once: true }); else addPanel();
   window.__technicalLog = log;
@@ -101,14 +80,6 @@
   log(`Startup-Version: ${buildSha || 'NICHT VERFÜGBAR (Build-SHA fehlt oder Platzhalter nicht ersetzt)'}.`);
   log(buildSha ? `Erwarteter Service-Worker-Cache: latex-pwa-${buildSha}.` : 'Erwarteter Service-Worker-Cache: nicht bestimmbar.');
 
-  try {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('code') || params.has('state') || params.has('error')) {
-      let stateMatches = false; let verifierPresent = false;
-      try { stateMatches = Boolean(params.get('state') && sessionStorage.getItem('gh_oauth_state') === params.get('state')); verifierPresent = Boolean(sessionStorage.getItem('gh_pkce_verifier')); } catch (_) { /* Callback flow logs storage errors. */ }
-      log(`OAuth-Rücksprung erkannt (Code: ${params.has('code') ? 'vorhanden' : 'fehlt'}, State: ${params.has('state') ? 'vorhanden' : 'fehlt'}, State-Prüfung: ${stateMatches ? 'passt' : 'passt nicht'}, PKCE-Verifier: ${verifierPresent ? 'vorhanden' : 'fehlt'}, OAuth-Fehlerparameter: ${params.has('error') ? 'vorhanden' : 'keiner'}).`);
-    }
-  } catch (_) { log('Callback-URL konnte nicht geprüft werden.'); }
   document.addEventListener('click', (event) => { if (event.target && event.target.closest && event.target.closest('#gh-login-btn')) log('GitHub-Login-Schaltfläche betätigt.'); }, true);
 
   const originalFetch = window.fetch;
@@ -117,12 +88,10 @@
       let requestUrl; let method;
       try { requestUrl = new URL(typeof input === 'string' ? input : input.url, window.location.href); method = (init && init.method) || (typeof input !== 'string' && input.method) || 'GET'; }
       catch (_) { log('Netzwerkanfrage gestartet (Ziel konnte nicht klassifiziert werden).'); return originalFetch.apply(this, arguments); }
-      logSafeOAuthRequest(init, requestUrl, method);
       let label = 'externe Anfrage';
-      if (requestUrl.hostname === 'github.com' && requestUrl.pathname === '/login/oauth/access_token') label = 'GitHub OAuth Token-Endpunkt';
-      else if (requestUrl.hostname === 'github.com' && requestUrl.pathname === '/login/device/code') label = 'GitHub Device-Code-Endpunkt';
-      else if (requestUrl.hostname === 'api.github.com') {
-        if (/\/branches\/?$/.test(requestUrl.pathname)) label = 'GitHub API: Branch-Liste';
+      if (requestUrl.hostname === 'api.github.com') {
+        if (requestUrl.pathname === '/user') label = 'GitHub API: Token-Prüfung';
+        else if (/\/branches\/?$/.test(requestUrl.pathname)) label = 'GitHub API: Branch-Liste';
         else if (requestUrl.pathname.includes('/git/trees/')) label = 'GitHub API: Repository-Baum';
         else if (requestUrl.pathname.includes('/contents/')) label = 'GitHub API: Dateiinhalte';
         else label = 'GitHub API';
@@ -134,8 +103,6 @@
       });
     };
   }
-  const originalReplaceState = history.replaceState.bind(history);
-  history.replaceState = function () { const result = originalReplaceState.apply(history, arguments); log('OAuth-Callback-URL wurde bereinigt.'); return result; };
   const observeAppError = () => {
     const footer = document.querySelector('footer'); if (!footer || typeof MutationObserver === 'undefined') return;
     new MutationObserver(() => { if (footer.textContent.startsWith('App-Fehler:')) log('App-Initialisierung mit Fehler abgebrochen; vorherige Protokolleinträge zeigen den letzten OAuth-/API-Schritt.'); }).observe(footer, { childList: true, characterData: true, subtree: true });
