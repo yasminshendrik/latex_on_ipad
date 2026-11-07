@@ -16,7 +16,7 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 | 4.1 | Azure Build & PDF API | Ausstehend | PDF-Build-Backend/API fehlt |
 | 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Panel und Toggle vorhanden; Resize und echte Vorschau fehlen |
 | 5 | KI-Schreibassistenz | Ausstehend | UI und Syntaxschutz fehlen |
-| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Service Worker registriert; lokale Dateien in IndexedDB; Remote-Sync und KI-Commit-Messages fehlen; Monaco benötigt CDN-Verbindung |
+| 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Service Worker registriert; OAuth-Rücksprung-URLs werden nicht gecacht; lokale Dateien in IndexedDB; Remote-Sync und KI-Commit-Messages fehlen; Monaco benötigt CDN-Verbindung |
 | 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
 
 ## Aktueller App-Stand

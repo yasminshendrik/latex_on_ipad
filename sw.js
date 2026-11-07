@@ -6,6 +6,13 @@ const ASSETS = [
   './js/app.js'
 ];
 
+function isOAuthCallback(url) {
+  const scope = new URL(self.registration.scope);
+  return url.origin === scope.origin &&
+    (url.pathname === scope.pathname || url.pathname === `${scope.pathname}index.html`) &&
+    ['code', 'state', 'error', 'error_description', 'error_uri'].some((key) => url.searchParams.has(key));
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {
@@ -17,9 +24,15 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(
-      keys.filter((key) => key.startsWith('latex-pwa-') && key !== CACHE_NAME).map((key) => caches.delete(key))
-    ))
+    Promise.all([
+      caches.keys().then((keys) => Promise.all(
+        keys.filter((key) => key.startsWith('latex-pwa-') && key !== CACHE_NAME).map((key) => caches.delete(key))
+      )),
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const requests = await cache.keys();
+        await Promise.all(requests.filter((request) => isOAuthCallback(new URL(request.url))).map((request) => cache.delete(request)));
+      })
+    ])
   );
   self.clients.claim();
 });
@@ -29,6 +42,11 @@ self.addEventListener('fetch', (event) => {
 
   const requestUrl = new URL(event.request.url);
   if (requestUrl.origin !== self.location.origin) return;
+
+  if (event.request.mode === 'navigate' && isOAuthCallback(requestUrl)) {
+    event.respondWith(caches.match('./index.html').then((cachedIndex) => cachedIndex || fetch(event.request)));
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
