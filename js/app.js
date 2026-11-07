@@ -15,6 +15,11 @@
   const loginError = document.getElementById('github-login-error');
   const loginSubmit = document.getElementById('github-login-submit');
   const repoLabel = document.getElementById('repo-label');
+  const repoDialog = document.getElementById('repo-dialog');
+  const repoCount = document.getElementById('repo-count');
+  const repoError = document.getElementById('repo-error');
+  const repoList = document.getElementById('repo-list');
+  const repoRetry = document.getElementById('repo-retry');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
   let repoName = localStorage.getItem('gh_current_repo') || '';
@@ -25,11 +30,15 @@
     token = '';
   }
   let loginRequest;
+  let repoListRequest;
+  let repoOpenRequest;
+  let repositoryLoading = false;
   let activePath = 'main.tex';
   let dbPromise;
   let monacoEditor;
   let saveTimer;
   let suppressEditorChanges = false;
+  let saveQueue = Promise.resolve();
 
   function showError(message) { alert(message); }
   function setStatus(message) {
@@ -78,7 +87,7 @@
     });
   }
 
-  async function getEditorValue() {
+  function getEditorValue() {
     return monacoEditor ? monacoEditor.getValue() : textarea.value;
   }
   function setEditorValue(value) {
@@ -88,37 +97,42 @@
     suppressEditorChanges = false;
   }
 
-  async function persistCurrentFile(showSavedStatus = false) {
-    const content = await getEditorValue();
+  function persistCurrentFile(showSavedStatus = false) {
+    const content = getEditorValue();
     const record = { id: fileId(repoName || 'local', branchName, activePath), repo: repoName || 'local', branch: branchName, path: activePath, content, updatedAt: Date.now() };
-    try {
-      await storeRecord('files', record);
-      if (repoName) localStorage.setItem(`latex_ipad_document:${repoName}:${branchName}:${activePath}`, content);
-      localStorage.setItem('latex_ipad_document', content);
-      if (showSavedStatus) setStatus(`Lokal in IndexedDB gespeichert: ${activePath}`);
-    } catch (error) {
+    const save = async () => {
       try {
-        localStorage.setItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`, content);
+        await storeRecord('files', record);
+        localStorage.setItem(`latex_ipad_document:${record.repo}:${record.branch}:${record.path}`, content);
         localStorage.setItem('latex_ipad_document', content);
-        setStatus(`IndexedDB nicht verfügbar; Fallback in localStorage: ${error.message}`);
-      } catch (fallbackError) {
-        if (showSavedStatus) showError(`Speichern fehlgeschlagen: ${fallbackError.message}`);
+        if (showSavedStatus) setStatus(`Lokal in IndexedDB gespeichert: ${record.path}`);
+      } catch (error) {
+        try {
+          localStorage.setItem(`latex_ipad_document:${record.repo}:${record.branch}:${record.path}`, content);
+          localStorage.setItem('latex_ipad_document', content);
+          setStatus(`IndexedDB nicht verfügbar; Fallback in localStorage: ${error.message}`);
+        } catch (fallbackError) {
+          throw new Error(`Lokales Speichern fehlgeschlagen: ${fallbackError.message}`);
+        }
       }
-    }
+    };
+    const result = saveQueue.catch(() => {}).then(save);
+    saveQueue = result;
+    return result;
   }
 
   function scheduleAutoSave() {
     if (suppressEditorChanges) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      persistCurrentFile().then(() => setStatus(`Automatisch lokal gespeichert: ${activePath}`));
+      persistCurrentFile().catch((error) => { setStatus(error.message); showError(error.message); });
     }, 500);
   }
 
   textarea.addEventListener('input', scheduleAutoSave);
   document.getElementById('toggle-sidebar').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
   document.getElementById('toggle-preview').addEventListener('click', () => document.getElementById('preview-container').classList.toggle('visible'));
-  document.getElementById('save-btn').addEventListener('click', () => persistCurrentFile(true));
+  document.getElementById('save-btn').addEventListener('click', () => persistCurrentFile(true).catch((error) => showError(error.message)));
 
   async function loadMonaco() {
     if (!navigator.onLine || !window.crypto) return false;
@@ -167,63 +181,185 @@
       setStatus('Der frühere OAuth-Login ist nicht mehr aktiv. Bitte mit einem Fine-grained Token verbinden.');
     }
   }
-  async function githubApi(path, accept = 'application/vnd.github+json') {
-    const response = await fetch(`https://api.github.com${path}`, {
-      headers: { Accept: accept, Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' }
+  async function githubApi(path, accept = 'application/vnd.github+json', signal) {
+    if (signal?.aborted) throw new Error('Anfrage abgebrochen.');
+    const url = new URL(path, 'https://api.github.com');
+    if (url.origin !== 'https://api.github.com') throw new Error('Ungültige GitHub-API-Adresse.');
+    const response = await fetch(url.href, {
+      headers: { Accept: accept, Authorization: `Bearer ${token}`, 'X-GitHub-Api-Version': '2022-11-28' },
+      signal
     });
+    if (signal?.aborted) throw new Error('Anfrage abgebrochen.');
     if (!response.ok) throw new Error(`GitHub API ${response.status}: ${response.statusText}`);
     return response;
   }
 
-  async function showFile(path, row) {
-    activePath = path;
-    try {
-      const id = fileId(repoName, branchName, path);
-      let record = await readRecord('files', id).catch(() => null);
-      let content = record?.content;
-      if (content === undefined || content === null) content = localStorage.getItem(`latex_ipad_document:${repoName}:${branchName}:${path}`);
-      if (content === null || content === undefined) {
-        const [owner, name] = repoName.split('/');
-        const response = await githubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branchName)}`, 'application/vnd.github.raw+json');
-        content = await response.text();
-        await storeRecord('files', { id, repo: repoName, branch: branchName, path, content, updatedAt: Date.now() });
+  async function githubPages(path, signal) {
+    const items = [];
+    let url = new URL(path, 'https://api.github.com');
+    const expectedPath = url.pathname;
+    const visited = new Set();
+    while (url) {
+      if (url.origin !== 'https://api.github.com' || url.pathname !== expectedPath || visited.has(url.href)) {
+        throw new Error('Ungültige GitHub-Seitennavigation.');
       }
-      setEditorValue(content);
-      document.querySelectorAll('.file-item').forEach((element) => element.classList.remove('active'));
-      if (row) row.classList.add('active');
-      setStatus(`Datei geladen: ${path}`);
-    } catch (error) { showError(error.message); }
+      visited.add(url.href);
+      const response = await githubApi(url.href, 'application/vnd.github+json', signal);
+      const page = await response.json();
+      if (!Array.isArray(page)) throw new Error('GitHub lieferte eine ungültige Liste.');
+      items.push(...page);
+      const link = response.headers.get('link') || '';
+      const next = link.split(',').map((part) => part.trim()).find((part) => /;\s*rel="next"/.test(part));
+      const match = next && next.match(/^<([^>]+)>/);
+      if (next && !match) throw new Error('GitHub lieferte einen ungültigen Seitenlink.');
+      url = match ? new URL(match[1], url) : null;
+    }
+    return items;
   }
 
-  async function loadRepository() {
-    if (!repoName || !token) return;
-    const parts = repoName.split('/');
-    if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('Repo-Format muss owner/repo sein.');
-    const [owner, name] = parts;
-    fileList.textContent = 'Lade Repository…';
-    const branchesResponse = await githubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`);
-    const branches = await branchesResponse.json();
-    branchSelect.replaceChildren(...branches.map((branch) => {
-      const option = document.createElement('option'); option.value = branch.name; option.textContent = branch.name; option.selected = branch.name === branchName; return option;
-    }));
-    if (!branches.some((branch) => branch.name === branchName) && branches.length) {
-      branchName = branches[0].name;
-      branchSelect.value = branchName;
-      localStorage.setItem('gh_current_branch', branchName);
+  function renderFileTree(items) {
+    const root = document.createElement('ul');
+    root.className = 'file-tree';
+    const directories = new Map([['', root]]);
+    const sorted = items.filter((item) => item.type === 'tree' || item.type === 'blob')
+      .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path));
+    for (const item of sorted) {
+      const parts = item.path.split('/');
+      const name = parts.pop();
+      const parentPath = parts.join('/');
+      const parent = directories.get(parentPath);
+      if (!parent) throw new Error('GitHub lieferte eine unvollständige Ordnerstruktur.');
+      const row = document.createElement('li');
+      row.className = 'file-item';
+      const label = document.createElement('span');
+      label.textContent = `${item.type === 'tree' ? '📁' : '📄'} ${name}`;
+      row.appendChild(label);
+      if (item.type === 'tree') {
+        const children = document.createElement('ul');
+        row.appendChild(children);
+        directories.set(item.path, children);
+      }
+      parent.appendChild(row);
     }
-    const treeResponse = await githubApi(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/git/trees/${encodeURIComponent(branchName)}?recursive=1`);
-    const tree = await treeResponse.json();
-    fileList.replaceChildren();
-    (tree.tree || []).filter((item) => item.type === 'blob').forEach((item) => {
-      const row = document.createElement('div'); row.className = 'file-item'; row.textContent = item.path;
-      row.addEventListener('click', () => showFile(item.path, row)); fileList.appendChild(row);
-    });
-    await storeRecord('projects', { id: repoName, repo: repoName, branch: branchName, updatedAt: Date.now() }).catch(() => {});
-    setStatus(`Repo geladen: ${repoName} (${branchName})`);
+    return root;
+  }
+
+  async function loadRepository(nextRepo = repoName, preferredBranch = branchName, signal) {
+    if (!nextRepo || !token || repositoryLoading) return false;
+    repositoryLoading = true;
+    branchSelect.disabled = true;
+    repoLabel.disabled = true;
+    const currentToken = token;
+    try {
+      const parts = nextRepo.split('/');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error('Repo-Format muss owner/repo sein.');
+      const [owner, name] = parts.map(encodeURIComponent);
+      const base = `/repos/${owner}/${name}`;
+      const branches = await githubPages(`${base}/branches?per_page=100`, signal);
+      const nextBranch = branches.some((branch) => branch.name === preferredBranch) ? preferredBranch : branches[0]?.name;
+      let tree = [];
+      if (nextBranch) {
+        const response = await githubApi(`${base}/git/trees/${encodeURIComponent(nextBranch)}?recursive=1`, 'application/vnd.github+json', signal);
+        const data = await response.json();
+        if (data.truncated || !Array.isArray(data.tree)) throw new Error('GitHub lieferte keinen vollständigen Repository-Baum.');
+        tree = data.tree;
+      }
+      const treeElement = renderFileTree(tree);
+      if (token !== currentToken || signal?.aborted) return false;
+      if (nextRepo !== repoName || (nextBranch && nextBranch !== branchName)) {
+        textarea.readOnly = true;
+        if (monacoEditor) monacoEditor.updateOptions({ readOnly: true });
+        try {
+          clearTimeout(saveTimer);
+          await persistCurrentFile();
+          const targetBranch = nextBranch || preferredBranch || 'main';
+          const fallback = localStorage.getItem(`latex_ipad_document:${nextRepo}:${targetBranch}:main.tex`);
+          let saved;
+          try { saved = await readRecord('files', fileId(nextRepo, targetBranch, 'main.tex')); }
+          catch (error) {
+            if ('indexedDB' in window && fallback === null) throw new Error(`Lokaler Inhalt konnte nicht geladen werden: ${error.message}`);
+          }
+          if (token !== currentToken || signal?.aborted) return false;
+          activePath = 'main.tex';
+          setEditorValue(saved?.content ?? fallback ?? DEFAULT_DOCUMENT);
+        } finally {
+          textarea.readOnly = false;
+          if (monacoEditor) monacoEditor.updateOptions({ readOnly: false });
+        }
+      }
+      repoName = nextRepo;
+      branchName = nextBranch || preferredBranch || 'main';
+      localStorage.setItem('gh_current_repo', repoName);
+      localStorage.setItem('gh_current_branch', branchName);
+      repoLabel.textContent = repoName;
+      branchSelect.replaceChildren(...branches.map((branch) => {
+        const option = document.createElement('option'); option.value = branch.name; option.textContent = branch.name; return option;
+      }));
+      branchSelect.value = nextBranch || '';
+      if (treeElement.children.length) fileList.replaceChildren(treeElement);
+      else fileList.textContent = 'Keine Ordner oder Dateien zum Anzeigen.';
+      try { await storeRecord('projects', { id: repoName, repo: repoName, branch: branchName, updatedAt: Date.now() }); }
+      catch (error) { setStatus(`Repo geladen; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`); return true; }
+      setStatus(`Repo geladen: ${repoName}${nextBranch ? ` (${branchName})` : ''}`);
+      return true;
+    } finally {
+      repositoryLoading = false;
+      branchSelect.disabled = false;
+      repoLabel.disabled = false;
+    }
+  }
+
+  async function showRepositories() {
+    if (!token) { showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
+    if (!repoDialog.open) repoDialog.showModal();
+    if (repoListRequest) repoListRequest.abort();
+    const controller = new AbortController();
+    repoListRequest = controller;
+    repoCount.textContent = 'Repositories werden geladen…';
+    repoError.textContent = '';
+    repoList.replaceChildren();
+    repoRetry.hidden = true;
+    try {
+      const repositories = await githubPages('/user/repos?per_page=100&affiliation=owner,collaborator,organization_member&sort=full_name', controller.signal);
+      if (controller.signal.aborted) return;
+      const countText = repositories.length === 1 ? '1 verfügbares Repository.' : `${repositories.length} verfügbare Repositories.`;
+      repoCount.textContent = countText;
+      for (const repo of repositories) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = repo.full_name;
+        button.addEventListener('click', async () => {
+          if (repositoryLoading) return;
+          const openController = new AbortController();
+          repoOpenRequest = openController;
+          repoError.textContent = '';
+          repoCount.textContent = `Repository wird geöffnet: ${repo.full_name}…`;
+          try {
+            if (await loadRepository(repo.full_name, repo.default_branch, openController.signal)) repoDialog.close();
+          } catch (error) {
+            if (!openController.signal.aborted) repoError.textContent = `Repository konnte nicht geöffnet werden: ${error.message}`;
+          } finally {
+            if (repoOpenRequest === openController) repoOpenRequest = undefined;
+            if (repoDialog.open) repoCount.textContent = countText;
+          }
+        });
+        repoList.appendChild(button);
+      }
+      if (!repositories.length) repoError.textContent = 'Keine verfügbaren Repositories gefunden. Bitte Token-Zugriff und Organisationsfreigaben prüfen.';
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        repoCount.textContent = 'Repositories konnten nicht geladen werden.';
+        repoError.textContent = error.message;
+        repoRetry.hidden = false;
+      }
+    } finally {
+      if (repoListRequest === controller) repoListRequest = undefined;
+    }
   }
 
   loginButton.addEventListener('click', () => {
     if (token) {
+      if (repoDialog.open) repoDialog.close();
       sessionStorage.removeItem('gh_token'); token = ''; loginButton.textContent = 'GitHub Login'; loginButton.style.background = '';
       setStatus('Von GitHub abgemeldet.'); return;
     }
@@ -269,10 +405,7 @@
       loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
       loginDialog.close();
       setStatus('Mit GitHub verbunden.');
-      if (repoName) {
-        try { await loadRepository(); }
-        catch (error) { fileList.textContent = error.message; setStatus('GitHub verbunden, Repository konnte nicht geladen werden.'); }
-      }
+      await showRepositories();
     } catch (error) {
       if (!controller.signal.aborted) loginError.textContent = error.message;
     } finally {
@@ -282,17 +415,17 @@
       }
     }
   });
-  repoLabel.addEventListener('click', async () => {
-    const value = prompt('GitHub Repository angeben (Format: owner/repo):', repoName || 'owner/repo');
-    if (!value) return;
-    repoName = value.trim(); localStorage.setItem('gh_current_repo', repoName); repoLabel.textContent = repoName;
-    await storeRecord('projects', { id: repoName, repo: repoName, branch: branchName, updatedAt: Date.now() }).catch(() => {});
-    if (!token) { showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
-    try { await loadRepository(); } catch (error) { fileList.textContent = error.message; }
+  repoLabel.addEventListener('click', showRepositories);
+  repoRetry.addEventListener('click', showRepositories);
+  document.getElementById('repo-cancel').addEventListener('click', () => repoDialog.close());
+  repoDialog.addEventListener('close', () => {
+    if (repoListRequest) repoListRequest.abort();
+    if (repoOpenRequest) repoOpenRequest.abort();
   });
   branchSelect.addEventListener('change', async () => {
-    branchName = branchSelect.value; localStorage.setItem('gh_current_branch', branchName);
-    try { await persistCurrentFile(); await loadRepository(); } catch (error) { fileList.textContent = error.message; }
+    const target = branchSelect.value;
+    branchSelect.value = branchName;
+    try { await loadRepository(repoName, target); } catch (error) { showError(`Branch konnte nicht geladen werden: ${error.message}`); }
   });
   window.addEventListener('online', () => setStatus('Internetverbindung verfügbar. Lokales Arbeiten bleibt aktiv.'));
   window.addEventListener('offline', () => setStatus('Offline-Modus: lokale Dateien bleiben verfügbar.'));
@@ -313,7 +446,7 @@
     try {
       clearLegacyOAuthCallback();
       const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => null);
-      const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) || localStorage.getItem('latex_ipad_document');
+      const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) ?? (!repoName ? localStorage.getItem('latex_ipad_document') : null);
       textarea.value = saved?.content ?? fallback ?? DEFAULT_DOCUMENT;
       await loadMonaco();
       await registerServiceWorker();
@@ -321,7 +454,6 @@
       branchSelect.value = branchName;
       if (token) {
         loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
-        await loadRepository();
       }
       setStatus(navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.');
     } catch (error) {

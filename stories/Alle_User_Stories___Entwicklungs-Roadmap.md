@@ -6,12 +6,13 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 
 | Story | Thema | Status | Hinweise |
 |---|---|---|---|
-| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl per Prompt; Dashboard und Repo-Erstellung fehlen; Metadaten werden in IndexedDB gespeichert |
-| 1 & 1.1 | GitHub Auth & Sync | Teilweise umgesetzt | Früherer OAuth-Login durch PAT-Login ersetzt; Dateien und Baumstruktur abrufbar; Commit/Push fehlt |
+| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl nach Login; Dashboard und Repo-Erstellung fehlen; Metadaten werden in IndexedDB gespeichert |
+| [0.4](Story-0.4-Repository-Auswahl-und-Baumansicht.md) | Repository-Auswahl und reine Baumansicht | Im Code umgesetzt | Auswahl nach Login und nicht-interaktive Ordner- und Dateiliste |
+| [1 & 1.1](Story-1-GitHub-Auth-und-Sync.md) | GitHub Auth & Sync | Teilweise umgesetzt | Früherer OAuth-Login: won't do; durch PAT-Login ersetzt. Baumstruktur abrufbar, Dateiauswahl vorerst ersetzt; Commit/Push fehlt |
 | 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln; Branch-Erstellung fehlt |
 | [1.5](Story-1.5-Azure-Static-Web-Apps-Idee.md) | Azure Static Web Apps als spätere Architekturidee | Backlog-Idee | Hosting der PWA und Token-Austausch über Azure Function prüfen; Backend-Abweichung noch nicht beschlossen |
-| [1.6](Story-1.6-Fine-grained-PAT-Login.md) | Fine-grained PAT-Login | Teilweise umgesetzt | Token-Eingabe und Prüfung im Code; Apple Passwörter und GitHub-Login noch nicht Ende-zu-Ende verifiziert |
-| 2 | VFS & Monaco Editor | Umgesetzt | IndexedDB-VFS, Monaco mit Offline-Texteditor-Fallback, lokales Auto-Save und Dateibaum vorhanden |
+| [1.6](Story-1.6-Fine-grained-PAT-Login.md) | Fine-grained PAT-Login | Teilweise umgesetzt | Token-Eingabe ohne Benutzername und Prüfung im Code; Apple Passwörter und GitHub-Login noch nicht Ende-zu-Ende verifiziert |
+| 2 | VFS & Monaco Editor | Historisch umgesetzt | IndexedDB-VFS, Editor und Auto-Save vorhanden; interaktive Dateiauswahl vorerst durch Story 0.4 ersetzt |
 | 2.1 | Responsive UI & Sidebar | Umgesetzt | Responsives Layout und Sidebar-Toggle vorhanden |
 | 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Marker fehlen |
 | 4 | Live-Vorschau | Ausstehend | KaTeX-Integration fehlt |
@@ -22,7 +23,7 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 | 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
 
 ## Aktueller App-Stand
-Die App ist ein lokal editierbarer LaTeX-Editor mit IndexedDB-VFS, optionalem Monaco-Editor (CDN bei Internetverbindung, Texteditor-Fallback offline), Repo-/Branch-Lesen über GitHub und einer Service-Worker-PWA-Shell. Lokale Änderungen werden nach kurzer Inaktivität in IndexedDB gespeichert. Der GitHub-Login verwendet ein manuell eingegebenes Fine-grained PAT und prüft es über die GitHub-API; Apple Passwörter und der Ende-zu-Ende-Login sind noch nicht praktisch verifiziert. GitHub-Uploads, Branch-Erstellung, Sync-Queue, Linting, PDF-Build, KI-Assistenz und Historie/Undo sind nicht implementiert.
+Die App ist ein lokal editierbarer LaTeX-Editor mit IndexedDB-VFS, optionalem Monaco-Editor (CDN bei Internetverbindung, Texteditor-Fallback offline), Repo-/Branch-Baumansicht über GitHub und einer Service-Worker-PWA-Shell. Die Sidebar listet Ordner und Dateien ohne Öffnen-Funktion; GitHub-Dateiinhalte werden derzeit nicht geladen. Der Editor zeigt das lokal gespeicherte `main.tex` des jeweiligen Kontexts oder ein neues lokales Dokument. Lokale Änderungen werden nach kurzer Inaktivität in IndexedDB gespeichert. Der GitHub-Login verwendet ein manuell eingegebenes Fine-grained PAT und prüft es über die GitHub-API; Apple Passwörter und der Ende-zu-Ende-Login sind noch nicht praktisch verifiziert. GitHub-Uploads, Branch-Erstellung, Sync-Queue, Linting, PDF-Build, KI-Assistenz und Historie/Undo sind nicht implementiert.
 
 Offline sind die lokale Bearbeitung und Speicherung bereits geladener Dateien sowie die gecachte App-Shell möglich. Anmeldung und GitHub-API-Zugriffe benötigen Internet. Monaco selbst wird von einem CDN geladen; offline bleibt der Texteditor-Fallback verfügbar. Das PAT bleibt bis zur Abmeldung oder zum Ende der Sitzung im `sessionStorage` und ist für JavaScript derselben Origin zugänglich.
 

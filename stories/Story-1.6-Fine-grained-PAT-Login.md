@@ -6,8 +6,9 @@
 Den bisherigen GitHub-App-OAuth-Login durch die Eingabe eines Fine-grained Personal Access Tokens ersetzen. Das Token soll bei Bedarf über Apple Passwörter bereitgestellt werden können; die lokale Offline-Arbeit bleibt unabhängig vom Login.
 
 ## Umsetzung
-- Der Login öffnet ein Formular mit optionalem Benutzernamen und einem verdeckten Token-Feld. Die Felder verwenden `autocomplete="username"` und `autocomplete="current-password"` für Passwortmanager.
+- Der Login öffnet ein Formular mit einem verdeckten Token-Feld und ohne Benutzername-Feld. Das Token-Feld verwendet `autocomplete="current-password"` für Passwortmanager.
 - Vor dem Verbinden wird das Token über `GET /user` bei GitHub geprüft. Erst danach wird es für die laufende Sitzung in `sessionStorage` abgelegt; beim Abmelden wird es dort entfernt. Es wird nicht im Diagnoseprotokoll ausgegeben.
+- Anschließend öffnet sich die Repository-Auswahl gemäß [Story 0.4](Story-0.4-Repository-Auswahl-und-Baumansicht.md).
 - Die PWA enthält kein Client Secret und verwendet keinen OAuth-Token-Austausch. Alte OAuth-Sitzungsdaten und etwaige Rücksprungparameter werden bereinigt; alte OAuth-Tokens werden nicht übernommen.
 
 ## Nutzung und Grenzen
