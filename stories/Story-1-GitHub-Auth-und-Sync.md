@@ -14,7 +14,7 @@ GitHub App mit PKCE; `sessionStorage` für die Session-Daten (`code_verifier`, `
 - [x] **1.1 PKCE-Flow im Browser** — Code-Verifier und Code-Challenge wurden im Browser erzeugt und beim Redirect validiert. **Historisch im Code umgesetzt; won't do**
 - [x] **1.2 Token-Austausch über GitHub Token-Endpoint** — ein direkter Austausch wurde versucht. **Historisch im Code umgesetzt, nicht erfolgreich Ende-zu-Ende verifiziert; won't do**
 - [x] **1.3 Dateien und Baumstruktur abrufen** — Git-Trees werden über die GitHub API geladen; das gezielte Laden ausgewählter LaTeX-Dateien ist in [Story 2.4](Story-2.4-LaTeX-Datei-im-Editor-laden.md) umgesetzt. **Teilweise umgesetzt**
-- [ ] **1.4 Commit- & Push-Funktion via API** — echte GitHub-Uploads bleiben offen. **Ausstehend**
+- [ ] **1.4 Commit- & Push-Funktion via API** — echte GitHub-Uploads bleiben offen; der gemeinsame Online-/Offline-Speichern-Ablauf ist in [Story 6.1](Story-6.1-Einheitliches-Speichern.md) beschrieben. **Ausstehend**
 
 ## Frühere Einrichtung und Einschränkungen
 Der frühere Login verwendete eine registrierte GitHub App und die Callback-Adresse `https://yasminshendrik.github.io/latex_on_ipad/`. Die Client-ID war im Frontend hinterlegt; das Client Secret wurde dort nicht verwendet.

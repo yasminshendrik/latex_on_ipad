@@ -5,7 +5,7 @@ Ein LaTeX Editor für das iPad
 
 Beim Start zeigt die App lokal gespeicherte Projekte. „Lokal öffnen“ lädt ausschließlich bereits gespeicherte Dateien und funktioniert offline. Für den Online-Zugriff kann ein GitHub-Repository separat geöffnet werden.
 
-Über „Neues GitHub-Repository“ lässt sich ein privates Repository erstellen und mit `main.tex` initialisieren. Dafür müssen Internetverbindung und Token-Berechtigungen ausreichen. Bearbeitete Dateien werden weiterhin nur lokal gespeichert; ein Commit/Push-Workflow ist noch nicht verfügbar.
+Über „Neues GitHub-Repository“ lässt sich ein privates Repository erstellen und mit `main.tex` initialisieren. Dafür müssen Internetverbindung und Token-Berechtigungen ausreichen. Bearbeitete Dateien werden nach kurzer Inaktivität und während der App-Ausführung alle drei Minuten lokal gespeichert; Browser oder Betriebssystem können eine App im Hintergrund pausieren. Ein Commit/Push-Workflow ist noch nicht verfügbar.
 
 ## GitHub verbinden
 

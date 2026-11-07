@@ -51,6 +51,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
   const footer = { textContent: '' };
   const location = new URL(locationHref);
   let replacement;
+  const intervals = [];
   const window = { addEventListener() {} };
   const context = {
     window, document: {
@@ -66,6 +67,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
       removeItem: (key) => localValues.delete(key)
     },
     location, URL, AbortController, setTimeout, clearTimeout,
+    setInterval(callback, delay) { intervals.push({ callback, delay }); },
     history: { replaceState(_state, _title, url) { replacement = url; } },
     fetch: async (url, options) => {
       requests.push({ url, options });
@@ -75,7 +77,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
     alert(message) { throw new Error(`Unexpected alert: ${message}`); }
   };
   vm.runInNewContext(source, context);
-  return { elements, values, localValues, requests, footer, context, get replacement() { return replacement; } };
+  return { elements, values, localValues, requests, footer, context, intervals, get replacement() { return replacement; } };
 }
 
 function response(data, { status = 200, link = '' } = {}) {
@@ -349,6 +351,7 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
       'latex_ipad_document:alice/offline:main:chapter.tex': 'Lokal gespeicherter Inhalt'
     }
   });
+
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.elements['local-project-list'].children.length, 1);
   assert.match(app.elements['local-project-list'].children[0].children[0].children[0].textContent, /alice\/offline/);
@@ -358,6 +361,20 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
   assert.equal(app.elements['dashboard'].hidden, true);
   assert.equal(app.elements.editor.value, 'Lokal gespeicherter Inhalt');
   assert.match(app.footer.textContent, /Offline-Projekt geöffnet/);
+});
+
+test('Regelmäßige lokale Sicherung arbeitet unabhängig von Inaktivität und Netzwerkstatus', async () => {
+  const app = setup();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.intervals.length, 1);
+  assert.equal(app.intervals[0].delay, 3 * 60 * 1000);
+  app.context.navigator.onLine = false;
+  app.elements.editor.value = 'Lange Bearbeitung';
+  app.elements.editor.handlers.input();
+  app.intervals[0].callback();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:main.tex'), 'Lange Bearbeitung');
+  assert.match(html, /id="save-btn"[^>]*>Lokal speichern<\/button>/);
 });
 
 test('Neues privates Repository wird erstellt und mit main.tex initialisiert', async () => {

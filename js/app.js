@@ -5,6 +5,7 @@
   const DB_VERSION = 1;
   const DEFAULT_DOCUMENT = '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}';
   const MONACO_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs';
+  const PERIODIC_SAVE_MS = 3 * 60 * 1000;
 
   const textarea = document.getElementById('editor');
   const monacoHost = document.getElementById('monaco-editor');
@@ -190,6 +191,14 @@
       persistCurrentFile().catch((error) => { setStatus(error.message); showError(error.message); });
     }, 500);
   }
+
+  setInterval(() => {
+    if (!activeFileLoaded) return;
+    persistCurrentFile().catch((error) => {
+      setStatus(`Automatisches Speichern fehlgeschlagen: ${error.message}`);
+      showError(error.message);
+    });
+  }, PERIODIC_SAVE_MS);
 
   textarea.addEventListener('input', () => {
     activeFileLoaded = true;
