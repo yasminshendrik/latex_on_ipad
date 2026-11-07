@@ -11,9 +11,7 @@
     try {
       const saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]');
       if (Array.isArray(saved)) entries.push(...saved.filter((entry) => typeof entry === 'string').slice(-MAX_ENTRIES));
-    } catch (_) {
-      // Diagnostics remain available in memory if sessionStorage is unavailable.
-    }
+    } catch (_) { /* Keep diagnostics available in memory if storage is unavailable. */ }
   }
 
   function render() {
@@ -34,8 +32,7 @@
   }
 
   function log(message) {
-    const time = new Date().toLocaleTimeString();
-    entries.push(`${time}  ${message}`);
+    entries.push(`${new Date().toLocaleTimeString()}  ${message}`);
     if (entries.length > MAX_ENTRIES) entries.splice(0, entries.length - MAX_ENTRIES);
     try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); } catch (_) { /* Keep the visible in-memory log. */ }
     render();
@@ -54,10 +51,7 @@
 
   async function copyAll() {
     const text = entries.join('\n');
-    if (!text) {
-      setMessage('Kein Inhalt zum Kopieren.');
-      return;
-    }
+    if (!text) { setMessage('Kein Inhalt zum Kopieren.'); return; }
     try {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
@@ -125,6 +119,40 @@
     render();
   }
 
+  function getSafeHeader(headers, name) {
+    try {
+      if (headers instanceof Headers) return headers.get(name) || '';
+      if (Array.isArray(headers)) {
+        const pair = headers.find((item) => String(item[0]).toLowerCase() === name.toLowerCase());
+        return pair ? String(pair[1]) : '';
+      }
+      const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === name.toLowerCase());
+      return key ? String(headers[key]) : '';
+    } catch (_) { return ''; }
+  }
+
+  function logSafeOAuthRequest(input, init, requestUrl, method) {
+    if (requestUrl.hostname !== 'github.com' || requestUrl.pathname !== '/login/oauth/access_token') return;
+    const headers = init && init.headers;
+    let body = null;
+    try {
+      const rawBody = init && init.body;
+      if (typeof rawBody === 'string') body = JSON.parse(rawBody);
+    } catch (_) { /* Never log the raw body; report only safe metadata below. */ }
+    const expectedRedirect = `${window.location.origin}${window.location.pathname}`;
+    const redirect = body && typeof body.redirect_uri === 'string' ? body.redirect_uri : '';
+    let redirectMatches = false;
+    try {
+      const actual = new URL(redirect);
+      const expected = new URL(expectedRedirect);
+      redirectMatches = actual.origin === expected.origin && actual.pathname.replace(/\/$/, '') === expected.pathname.replace(/\/$/, '');
+    } catch (_) { /* Invalid or absent redirect URI does not match. */ }
+    const clientId = body && typeof body.client_id === 'string' ? body.client_id : '';
+    log(`OAuth-Anfrage (bereinigt): ${String(method).toUpperCase()} ${requestUrl.origin}${requestUrl.pathname}; Content-Type: ${getSafeHeader(headers, 'Content-Type') || '(nicht angegeben)'}; Accept: ${getSafeHeader(headers, 'Accept') || '(nicht angegeben)'}.`);
+    log(`OAuth-Konfiguration: client_id ${clientId ? `vorhanden (${clientId})` : 'fehlt'}; redirect_uri ${redirect ? redirect : 'fehlt'}; entspricht aktueller Callback-Adresse: ${redirectMatches ? 'ja' : 'NEIN'}.`);
+    log(`OAuth-Payload-Felder: ${body ? Object.keys(body).sort().join(', ') : '(kein lesbarer JSON-Body)'}; authorization code ${body && body.code ? 'vorhanden, Wert verborgen' : 'fehlt'}; PKCE code_verifier ${body && body.code_verifier ? 'vorhanden, Wert verborgen' : 'fehlt'}.`);
+  }
+
   loadEntries();
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addPanel, { once: true });
   else addPanel();
@@ -139,12 +167,10 @@
       try {
         stateMatches = Boolean(params.get('state') && sessionStorage.getItem('gh_oauth_state') === params.get('state'));
         verifierPresent = Boolean(sessionStorage.getItem('gh_pkce_verifier'));
-      } catch (_) { /* The callback flow will report its own storage error. */ }
+      } catch (_) { /* Callback flow reports any storage errors. */ }
       log(`OAuth-Rücksprung erkannt (Code: ${params.has('code') ? 'vorhanden' : 'fehlt'}, State: ${params.has('state') ? 'vorhanden' : 'fehlt'}, State-Prüfung: ${stateMatches ? 'passt' : 'passt nicht'}, PKCE-Verifier: ${verifierPresent ? 'vorhanden' : 'fehlt'}, OAuth-Fehlerparameter: ${params.has('error') ? 'vorhanden' : 'keiner'}).`);
     }
-  } catch (_) {
-    log('Callback-URL konnte nicht geprüft werden.');
-  }
+  } catch (_) { log('Callback-URL konnte nicht geprüft werden.'); }
 
   document.addEventListener('click', (event) => {
     if (event.target && event.target.closest && event.target.closest('#gh-login-btn')) log('GitHub-Login-Schaltfläche betätigt.');
@@ -162,6 +188,7 @@
         log('Netzwerkanfrage gestartet (Ziel konnte nicht klassifiziert werden).');
         return originalFetch.apply(this, arguments);
       }
+      logSafeOAuthRequest(input, init, requestUrl, method);
       let label = 'externe Anfrage';
       if (requestUrl.hostname === 'github.com' && requestUrl.pathname === '/login/oauth/access_token') label = 'GitHub OAuth Token-Endpunkt';
       else if (requestUrl.hostname === 'api.github.com') {
@@ -176,7 +203,8 @@
         return response;
       }, (error) => {
         const name = error && error.name ? error.name : 'Netzwerkfehler';
-        log(`${label}: Anfrage ohne HTTP-Antwort fehlgeschlagen (${name}; mögliches Netzwerk-, CORS- oder Browser-Blockierungsproblem).`);
+        const message = error && error.message === 'Load failed' ? 'Load failed' : 'Details aus Sicherheitsgründen nicht ausgegeben';
+        log(`${label}: Anfrage ohne HTTP-Antwort fehlgeschlagen (${name}; ${message}; mögliches Netzwerk-, CORS- oder Browser-Blockierungsproblem).`);
         throw error;
       });
     };
