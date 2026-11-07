@@ -12,6 +12,11 @@
 - Bei Änderungen an Code und Anforderungen sind die zugehörigen Story-Dokumente im selben Arbeitszusammenhang aktuell zu halten.
 - Aktualisiere die Story-Übersicht `stories/Alle_User_Stories___Entwicklungs-Roadmap.md` immer gemeinsam mit den betroffenen Einzel-Story-Dateien, insbesondere wenn Anforderungen, Teilschritte oder deren Status geändert werden.
 
+## Technisches Protokoll
+
+- Bei allen künftigen Änderungen müssen die betroffenen App-Aktivitäten einschließlich relevanter Fehler und Abbrüche sinnvoll und nachvollziehbar im vorhandenen technischen Protokoll erscheinen. Berücksichtige dies bei Implementierung und Tests.
+- Protokolliere keine Tokens, Zugangsdaten, Dokumentinhalte oder andere vertrauliche Daten. Halte die Einträge aussagekräftig, ohne unnötige oder wiederholte Meldungen zu erzeugen.
+
 ## Service worker cache versioning
 
 - The service worker cache name in the deployed PWA must identify the exact commit SHA that was deployed from the current Pages branch.
