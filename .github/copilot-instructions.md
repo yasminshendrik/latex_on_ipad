@@ -18,3 +18,14 @@
 - Keep `__COMMIT_SHA__` as the cache-name placeholder in `sw.js`; do not replace it manually with a guessed or previous commit hash.
 - The GitHub Pages workflow `.github/workflows/pages.yml` stamps the triggering commit's `GITHUB_SHA` into the deployed service worker artifact. Keep this workflow and placeholder behavior in sync whenever deployment configuration changes.
 - After source changes are pushed, check that the Pages deployment workflow succeeds; the deployed service worker should then contain the SHA of that deployment commit.
+
+## Development and Deployment
+
+- Vor Änderungen den tatsächlich aktuellen Branch- und Dateiinhalt prüfen.
+- Nach einem Push den zugehörigen Actions-Lauf und dessen Ergebnis kontrollieren.
+- Nicht aus einem erfolgreichen Workflow allein schließen, dass die erwartete Änderung sichtbar ist: zusätzlich die ausgelieferte App-Dateien prüfen
+- Bei sichtbaren Tests einen eindeutigen Marker verwenden und erst nach Kontrolle der Live-Seite sagen, dass die Aktualisierung sichtbar ist.
+- Fehler und Status präzise benennen: „committed“, „Workflow erfolgreich“ und „Live-Seite verifiziert“ sind verschiedene Aussagen.
+- keine Annahmen zum Code treffen, die echten Dateien lesen
+
+  
