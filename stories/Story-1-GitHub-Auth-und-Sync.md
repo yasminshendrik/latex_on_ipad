@@ -19,7 +19,8 @@ Für den Login muss eine GitHub App registriert sein. Die Client-ID in `js/app.j
 
 Gegenüber der früheren App-Variante wurde der `scope`-Parameter entfernt, weil GitHub App-Berechtigungen über die App-Konfiguration und Installationsrechte verwaltet werden. Das Access Token bleibt im `sessionStorage` der App; es ist damit nach wie vor für JavaScript in derselben Origin zugänglich. Die App bleibt lokal offline-fähig, remote GitHub-Interaktionen erfordern eine aktive Internetverbindung.
 
-## Device-Flow-Experiment
-- [x] Experimenteller Login über den GitHub-App Device Flow — der GitHub-Login-Button fordert einen Device Code an, zeigt den User Code und pollt auf die Nutzerbestätigung. **Im Code umgesetzt; Browser-CORS und erfolgreicher Ende-zu-Ende-Login noch nicht verifiziert.**
-- Die Geräte- und Nutzercodes werden nicht ins technische Log geschrieben; das Zugriffstoken wird nur in `sessionStorage` abgelegt.
-- Der Flow setzt voraus, dass Device Flow in den Einstellungen der verwendeten GitHub App aktiviert ist. Die direkte Erreichbarkeit der GitHub Device-Flow-Endpunkte aus Safari muss praktisch getestet werden.
+## Aktueller Login-Flow
+- Der Login-Button startet ausschließlich den Authorization-Code-Flow mit PKCE S256.
+- Callback-Fehler, fehlender oder ungültiger `state` sowie fehlender Authorization Code werden abgewiesen. PKCE-Daten werden nach jedem Callback-Versuch entfernt und OAuth-Parameter anschließend aus der URL entfernt.
+- Das Zugriffstoken wird nur in `sessionStorage` abgelegt. Ende-zu-Ende-Login, Browser-CORS und tatsächliche GitHub-App-Berechtigungen müssen mit der registrierten App noch praktisch verifiziert werden.
+- Ein zuvor eingebauter experimenteller Device Flow ist nicht mehr aktiv; der dafür verwendete Browser-Click-Handler wurde entfernt, damit er den PKCE-Flow nicht abfängt.

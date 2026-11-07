@@ -163,34 +163,57 @@
   }
   async function startLogin() {
     if (!crypto.subtle || !crypto.getRandomValues) throw new Error('Für GitHub Login wird ein aktueller Browser mit sicherer HTTPS-Verbindung benötigt.');
-    const verifier = randomValue();
-    const state = randomValue();
-    sessionStorage.setItem('gh_pkce_verifier', verifier);
-    sessionStorage.setItem('gh_oauth_state', state);
-    const challenge = await sha256Base64Url(verifier);
-    const params = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, state, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' });
-    window.location.assign(`https://github.com/login/oauth/authorize?${params}`);
+    try {
+      const verifier = randomValue();
+      const state = randomValue();
+      sessionStorage.setItem('gh_pkce_verifier', verifier);
+      sessionStorage.setItem('gh_oauth_state', state);
+      const challenge = await sha256Base64Url(verifier);
+      const params = new URLSearchParams({ client_id: CLIENT_ID, redirect_uri: REDIRECT_URI, state, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' });
+      window.location.assign(`https://github.com/login/oauth/authorize?${params}`);
+    } catch (error) {
+      sessionStorage.removeItem('gh_pkce_verifier');
+      sessionStorage.removeItem('gh_oauth_state');
+      throw new Error(`GitHub-Anmeldung konnte nicht gestartet werden: ${error.message}`);
+    }
   }
   async function handleOAuthCallback() {
-    const params = new URLSearchParams(location.search);
+    const callbackUrl = new URL(location.href);
+    const params = callbackUrl.searchParams;
     const code = params.get('code');
     const state = params.get('state');
-    if (params.get('error')) throw new Error(`GitHub-Anmeldung fehlgeschlagen: ${params.get('error_description') || params.get('error')}`);
-    if (!code) return;
-    const savedState = sessionStorage.getItem('gh_oauth_state');
-    const verifier = sessionStorage.getItem('gh_pkce_verifier');
-    if (!state || !savedState || state !== savedState || !verifier) throw new Error('OAuth-Prüfung fehlgeschlagen. Bitte erneut anmelden.');
-    const response = await fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ client_id: CLIENT_ID, code, code_verifier: verifier, redirect_uri: REDIRECT_URI })
-    });
-    const data = await response.json();
-    if (!response.ok || !data.access_token) throw new Error(data.error_description || data.error || 'GitHub konnte kein Zugriffstoken ausstellen.');
-    token = data.access_token;
-    sessionStorage.setItem('gh_token', token);
-    sessionStorage.removeItem('gh_pkce_verifier');
-    sessionStorage.removeItem('gh_oauth_state');
-    history.replaceState({}, document.title, location.pathname);
+    const oauthError = params.get('error');
+    if (!code && !state && !oauthError) return;
+    let callbackError;
+    try {
+      const savedState = sessionStorage.getItem('gh_oauth_state');
+      const verifier = sessionStorage.getItem('gh_pkce_verifier');
+      if (!state || !savedState || state !== savedState || !verifier) throw new Error('OAuth-Prüfung fehlgeschlagen. Bitte erneut anmelden.');
+      if (oauthError) {
+        const description = params.get('error_description');
+        throw new Error(`GitHub-Anmeldung fehlgeschlagen: ${description || oauthError}`);
+      }
+      if (!code) throw new Error('GitHub-Rücksprung enthält keinen Authorization Code. Bitte erneut anmelden.');
+
+      const response = await fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: CLIENT_ID, code, code_verifier: verifier, redirect_uri: REDIRECT_URI })
+      });
+      let data;
+      try { data = await response.json(); }
+      catch (_) { throw new Error('GitHub lieferte beim Token-Austausch keine lesbare Antwort.'); }
+      if (!response.ok || !data || !data.access_token) throw new Error(data?.error_description || data?.error || 'GitHub konnte kein Zugriffstoken ausstellen.');
+      sessionStorage.setItem('gh_token', data.access_token);
+      token = data.access_token;
+    } catch (error) {
+      callbackError = error;
+    } finally {
+      sessionStorage.removeItem('gh_pkce_verifier');
+      sessionStorage.removeItem('gh_oauth_state');
+      ['code', 'state', 'error', 'error_description', 'error_uri'].forEach((key) => callbackUrl.searchParams.delete(key));
+      history.replaceState({}, document.title, `${callbackUrl.pathname}${callbackUrl.search}${callbackUrl.hash}`);
+    }
+    if (callbackError) throw callbackError;
   }
   async function githubApi(path, accept = 'application/vnd.github+json') {
     const response = await fetch(`https://api.github.com${path}`, {

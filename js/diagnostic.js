@@ -135,16 +135,11 @@
     };
   }
   const originalReplaceState = history.replaceState.bind(history);
-  history.replaceState = function () { const result = originalReplaceState.apply(history, arguments); log('Callback-URL wurde nach erfolgreichem Token-Austausch bereinigt.'); return result; };
+  history.replaceState = function () { const result = originalReplaceState.apply(history, arguments); log('OAuth-Callback-URL wurde bereinigt.'); return result; };
   const observeAppError = () => {
     const footer = document.querySelector('footer'); if (!footer || typeof MutationObserver === 'undefined') return;
     new MutationObserver(() => { if (footer.textContent.startsWith('App-Fehler:')) log('App-Initialisierung mit Fehler abgebrochen; vorherige Protokolleinträge zeigen den letzten OAuth-/API-Schritt.'); }).observe(footer, { childList: true, characterData: true, subtree: true });
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observeAppError, { once: true }); else observeAppError();
 
-  const deviceFlowScript = document.createElement('script');
-  deviceFlowScript.src = new URL('device-flow.js', document.currentScript.src).href;
-  deviceFlowScript.async = true;
-  deviceFlowScript.onerror = () => log('Experimenteller Device-Flow-Code konnte nicht geladen werden.');
-  document.head.appendChild(deviceFlowScript);
 })();
