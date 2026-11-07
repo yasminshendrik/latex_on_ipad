@@ -32,4 +32,7 @@
 - this project builds a standalone pwa app. apart from initial download via the project’s GitHub pages it runs completely in the local browser and only connects to GitHub and other remote apis on demand of the user. no backend server will be provided for anythimg!
 - offline mode is the app’s default mode!
 - the update process of the locally cached app should be done by simply pushing a new version to the app’s GitHub page, enforcing a re-download/invalidating the local cache.
+
+## Chat
+- *always* answer in German 
   
