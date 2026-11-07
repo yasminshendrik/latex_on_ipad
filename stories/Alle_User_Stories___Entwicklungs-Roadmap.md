@@ -17,6 +17,7 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 | 2.1 | Responsive UI & Sidebar | Umgesetzt | Responsives Layout und Sidebar-Toggle vorhanden |
 | [2.2](Story-2.2-LaTeX-Dateien-und-Schreibbarkeit-in-der-Sidebar.md) | LaTeX-Dateien und Schreibbarkeit in der Sidebar | Ausstehend | Nur bearbeitbare LaTeX-Dateien zur Bearbeitung anbieten; nicht bearbeitbare Dateien nur namentlich mit Statussymbol aufführen |
 | [2.3](Story-2.3-Ausblendbares-Log.md) | Ausblendbares Log am unteren Rand | Ausstehend | Log standardmäßig ausgeblendet und über die UI einblendbar |
+| [2.4](Story-2.4-LaTeX-Datei-im-Editor-laden.md) | Ausgewählte LaTeX-Datei im Editor laden | Ausstehend | Auswahl einer LaTeX-Datei in der Sidebar lädt deren Inhalt in den Editor |
 | 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Marker fehlen |
 | 4 | Live-Vorschau | Ausstehend | KaTeX-Integration fehlt |
 | 4.1 | Azure Build & PDF API | Ausstehend | PDF-Build-Backend/API fehlt |
