@@ -3,19 +3,18 @@
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel
-Browser-basierte GitHub-Anbindung mit OAuth PKCE und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
+Browser-basierte GitHub-Anbindung mit GitHub App + OAuth PKCE und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
 
 ## Technische Komponenten
-GitHub OAuth App mit PKCE; `sessionStorage` für die Session-Daten (PKCE verifier, state und Zugriffstoken); GitHub Tree-/File-API.
+GitHub App mit PKCE; `sessionStorage` für die Session-Daten (`code_verifier`, `state`, Zugriffstoken); GitHub Tree-/File-API.
 
 ## Teilschritte
-- [x] PKCE-Verifier und S256-Challenge mit kryptografisch sicherem Browser-Zufall erzeugen. **Im Code umgesetzt; Produktivtest mit registrierter OAuth App ausstehend**
-- [x] OAuth-`state` bei Callback zwingend prüfen; Callback-Parameter nach Verarbeitung aus der URL entfernen. **Im Code umgesetzt**
-- [x] Authorization Code am GitHub Token-Endpunkt mit Client-ID, Code, Redirect-URI und PKCE-Verifier austauschen; kein Client Secret im Frontend verwenden. **Im Code umgesetzt; Browser-/GitHub-Konfigurationstest ausstehend**
-- [x] Dateien und Baumstruktur über die GitHub API abrufen. **Umgesetzt**
-- [ ] Commit- & Push-Funktion via API. **Ausstehend**
+- [x] **1.1 PKCE-Flow im Browser** — Code-Verifier und Code-Challenge werden im Browser erzeugt und beim Redirect validiert. **Im Code umgesetzt**
+- [x] **1.2 Token-Austausch über GitHub Token-Endpoint** — der Authorization Code wird gegen ein Access Token ausgetauscht. **Im Code umgesetzt**
+- [x] **1.3 Dateien und Baumstruktur abrufen** — Git-Trees und Rohdateien über die GitHub API werden geladen. **Umgesetzt**
+- [ ] **1.4 Commit- & Push-Funktion via API** — echte GitHub-Uploads bleiben offen. **Ausstehend**
 
 ## Einrichtung und Einschränkungen
-Für den Login muss eine GitHub OAuth App registriert sein. Die Client-ID in `js/app.js` ist derzeit ein Platzhalter und muss durch die echte Client-ID ersetzt werden. Die registrierte Callback-URL muss exakt der URL entsprechen, die `redirectUri()` erzeugt. Das Access Token wird in `sessionStorage` abgelegt und ist damit für JavaScript im App-Origin zugänglich; PKCE verhindert nicht, dass XSS ein bereits ausgegebenes Token ausliest.
+Für den Login muss eine GitHub App registriert sein. Die Client-ID in `js/app.js` ist nun gesetzt. Das Client Secret bleibt nicht im Frontend und wird nicht verwendet. Die App erwartet den Callback exakt auf `https://yasminshendrik.github.io/latex_on_ipad/`.
 
-Der OAuth-Flow benötigt eine Online-Verbindung. Lokales Bearbeiten und Speichern in IndexedDB funktionieren unabhängig davon; Repository-Zugriff über GitHub benötigt Netzwerk und ein gültiges Token.
+Gegenüber der früheren App-Variante wurde der `scope`-Parameter entfernt, weil GitHub App-Berechtigungen über die App-Konfiguration und Installationsrechte verwaltet werden. Das Access Token bleibt im `sessionStorage` der App; es ist damit nach wie vor für JavaScript in derselben Origin zugänglich. Die App bleibt lokal offline-fähig, remote GitHub-Interaktionen erfordern eine aktive Internetverbindung.
