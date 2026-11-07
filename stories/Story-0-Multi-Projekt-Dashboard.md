@@ -1,6 +1,6 @@
 # Story 0: Lokale Projektübersicht & GitHub-Repository-Zugriff
 
-**Gesamtstatus: Teilweise umgesetzt**
+**Gesamtstatus: Umgesetzt**
 
 ## Ziel
 Beim Start eine Übersicht der lokal verfügbaren Projekte anbieten und den Einstieg in die Arbeit klar von einem Online-Zugriff auf GitHub trennen. Lokal gespeicherte Projekte sollen auch ohne Verbindung weiterbearbeitet werden können. Das Öffnen eines GitHub-Repositories ist ein eigener, ausdrücklich onlineabhängiger Ablauf.
@@ -9,9 +9,9 @@ Beim Start eine Übersicht der lokal verfügbaren Projekte anbieten und den Eins
 IndexedDB zur lokalen Speicherung von Projektmetadaten und Dateien; GitHub API für die Online-Repository-Auswahl und gegebenenfalls das Erstellen neuer Repositories.
 
 ## Teilschritte
-- [ ] **0.1 Lokale Projektübersicht als Startbildschirm** — lokal gespeicherte Projekte sichtbar machen und von dort zur lokalen Weiterarbeit öffnen; den Online-Einstieg zum Öffnen eines GitHub-Repositories separat anbieten. **Ausstehend**
+- [x] **0.1 Lokale Projektübersicht als Startbildschirm** — lokal gespeicherte Projekte sichtbar machen und von dort zur lokalen Weiterarbeit öffnen; den Online-Einstieg zum Öffnen eines GitHub-Repositories separat anbieten. **Umgesetzt**
 - [x] **0.2 GitHub-Repositories online auswählen und öffnen** — nach dem Login Repositories laden und über die Sidebar erneut auswählen. Dies ist die Online-Auswahl gemäß [Story 0.4](Story-0.4-Repository-Auswahl-und-Baumansicht.md), kein lokales Dashboard. **Im Code umgesetzt**
-- [ ] **0.3 Neue Repositories über GitHub API initialisieren** — optionaler, separater Ablauf zum Erstellen eines Repositories inklusive `main.tex`. **Ausstehend**
+- [x] **0.3 Neue Repositories über GitHub API initialisieren** — separater Ablauf erstellt ein privates Repository und initialisiert `main.tex`. **Im Code umgesetzt**
 
 ## Anmerkung
-Die App startet derzeit direkt im Editor. Nach dem Öffnen eines Repositories werden dessen Metadaten lokal gespeichert; eine Übersicht, die lokal gespeicherte Projekte beim Start aufführt und deren Offline-Weiterarbeit ermöglicht, ist noch nicht implementiert. Die GitHub-Repository-Liste wird online geladen und benötigt eine Verbindung sowie ein gültiges Token. Das Erstellen und Initialisieren eines neuen Repositories bleibt unabhängig von der lokalen Projektübersicht.
+Die App startet mit einer lokalen Projektübersicht. Dort gespeicherte Projekte lassen sich ohne Netzwerkzugriff öffnen; nur lokal vorhandene Dateien werden angezeigt und geladen. GitHub-Repositories werden über einen separaten Online-Ablauf geöffnet und können zusätzlich über die GitHub API neu erstellt und mit `main.tex` initialisiert werden. Das Erstellen benötigt eine Verbindung und ein Token mit den nötigen GitHub-Berechtigungen; neu erstellte Repositories sind privat.

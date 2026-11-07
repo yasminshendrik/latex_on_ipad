@@ -20,6 +20,16 @@
   const repoError = document.getElementById('repo-error');
   const repoList = document.getElementById('repo-list');
   const repoRetry = document.getElementById('repo-retry');
+  const createRepoDialog = document.getElementById('create-repo-dialog');
+  const createRepoForm = document.getElementById('create-repo-form');
+  const createRepoName = document.getElementById('create-repo-name');
+  const createRepoDescription = document.getElementById('create-repo-description');
+  const createRepoStatus = document.getElementById('create-repo-status');
+  const createRepoError = document.getElementById('create-repo-error');
+  const createRepoSubmit = document.getElementById('create-repo-submit');
+  const dashboard = document.getElementById('dashboard');
+  const dashboardList = document.getElementById('local-project-list');
+  const dashboardEmpty = document.getElementById('local-project-empty');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
   let repoName = localStorage.getItem('gh_current_repo') || '';
@@ -38,6 +48,8 @@
   let monacoEditor;
   let saveTimer;
   let fileLoadRequest;
+  let createRepoRequest;
+  let pendingRepoCreation;
   let activeFileButtons = [];
   let activeFileLoaded = false;
   let suppressEditorChanges = false;
@@ -90,6 +102,35 @@
     });
   }
 
+  async function readAllRecords(storeName) {
+    const database = await openDatabase();
+    return new Promise((resolve, reject) => {
+      const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error || new Error('Lokale Projektdaten konnten nicht geladen werden.'));
+    });
+  }
+
+  function readProjectCatalog() {
+    try {
+      const catalog = JSON.parse(localStorage.getItem('latex_ipad_projects') || '[]');
+      return Array.isArray(catalog) ? catalog : [];
+    } catch (error) {
+      throw new Error(`Lokale Projektübersicht konnte nicht gelesen werden: ${error.message}`);
+    }
+  }
+
+  function writeProjectCatalog(project) {
+    const projects = readProjectCatalog().filter((item) => item.id !== project.id);
+    projects.push(project);
+    localStorage.setItem('latex_ipad_projects', JSON.stringify(projects));
+  }
+
+  async function storeProject(project) {
+    await storeRecord('projects', project);
+    writeProjectCatalog(project);
+  }
+
   function getEditorValue() {
     return monacoEditor ? monacoEditor.getValue() : textarea.value;
   }
@@ -106,6 +147,15 @@
     const save = async () => {
       try {
         await storeRecord('files', record);
+        const previous = await readRecord('projects', record.repo);
+        await storeProject({
+          id: record.repo,
+          repo: record.repo,
+          branch: record.branch,
+          activePath: record.path,
+          paths: [...new Set([...(previous?.paths || []), record.path])],
+          updatedAt: record.updatedAt
+        });
         localStorage.setItem(`latex_ipad_document:${record.repo}:${record.branch}:${record.path}`, content);
         localStorage.setItem('latex_ipad_document', content);
         if (showSavedStatus) setStatus(`Lokal in IndexedDB gespeichert: ${record.path}`);
@@ -113,6 +163,15 @@
         try {
           localStorage.setItem(`latex_ipad_document:${record.repo}:${record.branch}:${record.path}`, content);
           localStorage.setItem('latex_ipad_document', content);
+          const previous = readProjectCatalog().find((project) => project.id === record.repo);
+          writeProjectCatalog({
+            id: record.repo,
+            repo: record.repo,
+            branch: record.branch,
+            activePath: record.path,
+            paths: [...new Set([...(previous?.paths || []), record.path])],
+            updatedAt: record.updatedAt
+          });
           setStatus(`IndexedDB nicht verfügbar; Fallback in localStorage: ${error.message}`);
         } catch (fallbackError) {
           throw new Error(`Lokales Speichern fehlgeschlagen: ${fallbackError.message}`);
@@ -228,6 +287,33 @@
     return items;
   }
 
+  async function githubWrite(path, method, body, signal) {
+    if (!token || !navigator.onLine) throw new Error('Für GitHub-Schreibzugriffe werden eine Verbindung und ein gültiges Token benötigt.');
+    const url = new URL(path, 'https://api.github.com');
+    if (url.origin !== 'https://api.github.com') throw new Error('Ungültige GitHub-API-Adresse.');
+    const response = await fetch(url.href, {
+      method,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body),
+      signal
+    });
+    if (signal?.aborted) throw new Error('Anfrage abgebrochen.');
+    if (!response.ok) throw new Error(`GitHub API ${response.status}: ${response.statusText}`);
+    return response;
+  }
+
+  function encodeBase64(value) {
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
   function renderFileTree(items) {
     const root = document.createElement('ul');
     root.className = 'file-tree';
@@ -282,6 +368,137 @@
       parent.appendChild(row);
     }
     return root;
+  }
+
+  function localTreeItems(paths) {
+    const directories = new Set();
+    const files = [];
+    for (const path of paths) {
+      const parts = path.split('/');
+      parts.pop();
+      while (parts.length) {
+        directories.add(parts.join('/'));
+        parts.pop();
+      }
+      files.push({ type: 'blob', path });
+    }
+    return [
+      ...[...directories].map((path) => ({ type: 'tree', path })),
+      ...files
+    ];
+  }
+
+  function showEditor() {
+    dashboard.hidden = true;
+    document.getElementById('main-container').hidden = false;
+  }
+
+  async function refreshDashboard() {
+    dashboardList.replaceChildren();
+    try {
+      let projects = [];
+      let files = [];
+      try { projects = await readAllRecords('projects'); }
+      catch (error) {
+        setStatus(`IndexedDB-Projekte konnten nicht gelesen werden: ${error.message}`);
+      }
+      try { files = await readAllRecords('files'); }
+      catch (error) {
+        setStatus(`IndexedDB-Dateien konnten nicht gelesen werden; localStorage-Projekte werden angezeigt: ${error.message}`);
+      }
+      const catalog = readProjectCatalog();
+      const merged = new Map(catalog.map((project) => [project.id, project]));
+      projects.forEach((project) => merged.set(project.id, { ...merged.get(project.id), ...project }));
+      files.forEach((file) => {
+        const existing = merged.get(file.repo);
+        if (existing?.branch && existing.branch !== file.branch) return;
+        const project = existing || { id: file.repo, repo: file.repo, branch: file.branch, paths: [] };
+        project.paths = [...new Set([...(project.paths || []), file.path])];
+        project.updatedAt = Math.max(project.updatedAt || 0, file.updatedAt || 0);
+        merged.set(file.repo, project);
+      });
+      for (let index = 0; index < localStorage.length; index += 1) {
+        const key = localStorage.key(index);
+        if (!key?.startsWith('latex_ipad_document:')) continue;
+        const parts = key.slice('latex_ipad_document:'.length).split(':');
+        const repo = parts[0] === 'local' ? parts.shift() : `${parts.shift()}/${parts.shift()}`;
+        const branch = parts.shift();
+        const path = parts.join(':');
+        if (!repo || !branch || !path) continue;
+        const existing = merged.get(repo);
+        if (existing?.branch && existing.branch !== branch) continue;
+        const project = existing || { id: repo, repo, branch, paths: [] };
+        project.paths = [...new Set([...(project.paths || []), path])];
+        merged.set(repo, project);
+      }
+      const ordered = [...merged.values()].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      dashboardEmpty.hidden = ordered.length > 0;
+      dashboardEmpty.textContent = ordered.length ? '' : 'Noch keine lokal gespeicherten Projekte. Öffne ein GitHub-Repository und lade Dateien oder bearbeite ein lokales Dokument.';
+      for (const project of ordered) {
+        const card = document.createElement('article');
+        card.className = 'local-project';
+        const details = document.createElement('div');
+        const title = document.createElement('strong');
+        title.textContent = project.repo === 'local' ? 'Lokales Projekt' : project.repo;
+        const metadata = document.createElement('p');
+        metadata.textContent = `${project.branch || 'main'} · ${(project.paths || []).length} lokal gespeicherte ${project.paths?.length === 1 ? 'Datei' : 'Dateien'}`;
+        const open = document.createElement('button');
+        open.type = 'button';
+        open.textContent = 'Lokal öffnen';
+        open.setAttribute('aria-label', `Lokal öffnen: ${title.textContent}`);
+        open.addEventListener('click', () => openLocalProject(project).catch((error) => {
+          setStatus(`Lokales Projekt konnte nicht geöffnet werden: ${error.message}`);
+          showError(error.message);
+        }));
+        details.append(title, metadata);
+        card.append(details, open);
+        dashboardList.appendChild(card);
+      }
+    } catch (error) {
+      dashboardEmpty.hidden = false;
+      dashboardEmpty.textContent = `Lokale Projektübersicht konnte nicht geladen werden: ${error.message}`;
+      setStatus(dashboardEmpty.textContent);
+    }
+  }
+
+  async function openLocalProject(project) {
+    if (activeFileLoaded) {
+      clearTimeout(saveTimer);
+      await persistCurrentFile();
+    }
+    const nextRepo = project.repo === 'local' ? '' : project.repo;
+    const nextBranch = project.branch || 'main';
+    let records = [];
+    try { records = await readAllRecords('files'); }
+    catch (error) { setStatus(`IndexedDB nicht verfügbar; lokale Kopien aus localStorage werden verwendet: ${error.message}`); }
+    const localRecords = records.filter((record) => record.repo === (nextRepo || 'local') && record.branch === nextBranch);
+    const paths = [...new Set([...(project.paths || []), ...localRecords.map((record) => record.path)])].sort();
+    repoName = nextRepo;
+    branchName = nextBranch;
+    activePath = project.activePath && paths.includes(project.activePath) ? project.activePath : paths.includes('main.tex') ? 'main.tex' : paths[0] || 'main.tex';
+    const tree = renderFileTree(localTreeItems(paths));
+    if (tree.children.length) fileList.replaceChildren(tree);
+    else fileList.textContent = 'Für dieses Projekt sind noch keine Dateien lokal gespeichert.';
+    branchSelect.replaceChildren();
+    const option = document.createElement('option');
+    option.value = branchName;
+    option.textContent = branchName;
+    branchSelect.appendChild(option);
+    branchSelect.value = branchName;
+    branchSelect.disabled = true;
+    repoLabel.textContent = repoName || 'Lokales Projekt';
+    localStorage.setItem('gh_current_repo', repoName);
+    localStorage.setItem('gh_current_branch', branchName);
+    const record = localRecords.find((file) => file.path === activePath);
+    const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`);
+    const content = record?.content ?? fallback;
+    activeFileLoaded = content !== null && content !== undefined;
+    setEditorValue(content ?? DEFAULT_DOCUMENT);
+    updateActiveFileButton();
+    showEditor();
+    setStatus(activeFileLoaded
+      ? `Offline-Projekt geöffnet: ${repoName || 'Lokales Projekt'} (${branchName})`
+      : 'Projekt lokal geöffnet. Noch keine Datei lokal gespeichert; GitHub-Inhalte werden offline nicht geladen.');
   }
 
   function updateActiveFileButton() {
@@ -381,7 +598,17 @@
       if (treeElement.children.length) fileList.replaceChildren(treeElement);
       else fileList.textContent = 'Keine Ordner oder Dateien zum Anzeigen.';
       updateActiveFileButton();
-      try { await storeRecord('projects', { id: repoName, repo: repoName, branch: branchName, updatedAt: Date.now() }); }
+      try {
+        const previous = await readRecord('projects', repoName);
+        await storeProject({
+          id: repoName,
+          repo: repoName,
+          branch: branchName,
+          activePath: previous?.branch === branchName ? previous.activePath : 'main.tex',
+          paths: previous?.branch === branchName ? previous.paths || [] : [],
+          updatedAt: Date.now()
+        });
+      }
       catch (error) { setStatus(`Repo geladen; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`); return true; }
       setStatus(`Repo geladen: ${repoName}${nextBranch ? ` (${branchName})` : ''}`);
       return true;
@@ -392,8 +619,109 @@
     }
   }
 
+  function openCreateRepository() {
+    if (!token) {
+      showError('Bitte zuerst über „GitHub Login“ verbinden.');
+      return;
+    }
+    if (!navigator.onLine) {
+      createRepoError.textContent = 'Zum Erstellen eines GitHub-Repositories ist eine Internetverbindung erforderlich.';
+      createRepoStatus.textContent = '';
+    } else {
+      createRepoError.textContent = '';
+      createRepoStatus.textContent = '';
+    }
+    updateCreateRepoButton();
+    createRepoDialog.showModal();
+  }
+
+  function updateCreateRepoButton() {
+    createRepoSubmit.textContent = pendingRepoCreation?.name === createRepoName.value.trim()
+      ? pendingRepoCreation.initialized ? 'Repository erneut öffnen' : 'Initialisierung fortsetzen'
+      : 'Privates Repository erstellen';
+  }
+
+  createRepoName.addEventListener('input', updateCreateRepoButton);
+
+  createRepoForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (createRepoRequest) return;
+    const name = createRepoName.value.trim();
+    if (!/^[A-Za-z0-9._-]{1,100}$/.test(name)) {
+      createRepoError.textContent = 'Der Repository-Name darf nur Buchstaben, Zahlen, Punkte, Unterstriche und Bindestriche enthalten.';
+      return;
+    }
+    const controller = new AbortController();
+    createRepoRequest = controller;
+    createRepoSubmit.disabled = true;
+    createRepoError.textContent = '';
+    createRepoStatus.textContent = 'Repository wird erstellt…';
+    let createdRepo;
+    try {
+      if (pendingRepoCreation?.name === name) {
+        createdRepo = pendingRepoCreation.repo;
+      } else {
+        const createResponse = await githubWrite('/user/repos', 'POST', {
+          name,
+          description: createRepoDescription.value.trim() || undefined,
+          private: true,
+          auto_init: true
+        }, controller.signal);
+        createdRepo = await createResponse.json();
+        if (!createdRepo.full_name || !createdRepo.default_branch) throw new Error('GitHub lieferte unvollständige Repository-Daten.');
+        pendingRepoCreation = { name, repo: createdRepo, initialized: false };
+      }
+      if (!pendingRepoCreation.initialized) {
+        createRepoStatus.textContent = 'Repository erstellt; main.tex wird initialisiert…';
+        const repoPath = createdRepo.full_name.split('/').map(encodeURIComponent).join('/');
+        await githubWrite(`/repos/${repoPath}/contents/main.tex`, 'PUT', {
+          message: 'LaTeX-Projekt initialisieren',
+          content: encodeBase64(DEFAULT_DOCUMENT)
+        }, controller.signal);
+        pendingRepoCreation.initialized = true;
+      }
+      createRepoStatus.textContent = 'main.tex initialisiert; Repository wird geöffnet…';
+      const opened = await loadRepository(createdRepo.full_name, createdRepo.default_branch, controller.signal);
+      if (!opened) throw new Error('Repository konnte nach der Initialisierung nicht geöffnet werden.');
+      await selectFile('main.tex', controller.signal);
+      pendingRepoCreation = undefined;
+      updateCreateRepoButton();
+      createRepoDialog.close();
+      if (repoDialog.open) repoDialog.close();
+      showEditor();
+      setStatus(`Privates Repository erstellt und initialisiert: ${createdRepo.full_name}`);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        createRepoStatus.textContent = '';
+        createRepoError.textContent = createdRepo
+          ? `${createdRepo.full_name} wurde erstellt, aber main.tex oder das Öffnen des Repositories ist fehlgeschlagen: ${error.message}`
+          : error.message;
+        updateCreateRepoButton();
+      }
+    } finally {
+      if (createRepoRequest === controller) {
+        createRepoRequest = undefined;
+        createRepoSubmit.disabled = false;
+      }
+    }
+  });
+
+  document.getElementById('create-repo-cancel').addEventListener('click', () => createRepoDialog.close());
+  createRepoDialog.addEventListener('cancel', (event) => {
+    if (createRepoRequest) event.preventDefault();
+  });
+  createRepoDialog.addEventListener('close', () => {
+    if (createRepoRequest) createRepoRequest.abort();
+    createRepoRequest = undefined;
+    createRepoSubmit.disabled = false;
+  });
+
   async function showRepositories() {
     if (!token) { showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
+    if (!navigator.onLine) {
+      showError('Zum Laden von GitHub-Repositories ist eine Internetverbindung erforderlich. Lokale Projekte bleiben offline verfügbar.');
+      return;
+    }
     if (!repoDialog.open) repoDialog.showModal();
     if (repoListRequest) repoListRequest.abort();
     const controller = new AbortController();
@@ -426,7 +754,10 @@
           repoError.textContent = '';
           repoCount.textContent = `Repository wird geöffnet: ${repo.full_name}…`;
           try {
-            if (await loadRepository(repo.full_name, repo.default_branch, openController.signal)) repoDialog.close();
+            if (await loadRepository(repo.full_name, repo.default_branch, openController.signal)) {
+              repoDialog.close();
+              showEditor();
+            }
           } catch (error) {
             if (!openController.signal.aborted) repoError.textContent = `Repository konnte nicht geöffnet werden: ${error.message}`;
           } finally {
@@ -507,6 +838,10 @@
     }
   });
   repoLabel.addEventListener('click', showRepositories);
+  document.getElementById('open-repo-btn').addEventListener('click', showRepositories);
+  document.getElementById('dashboard-open-repo').addEventListener('click', showRepositories);
+  document.getElementById('dashboard-create-repo').addEventListener('click', openCreateRepository);
+  document.getElementById('repo-create').addEventListener('click', openCreateRepository);
   repoRetry.addEventListener('click', showRepositories);
   document.getElementById('repo-cancel').addEventListener('click', () => repoDialog.close());
   repoDialog.addEventListener('close', () => {
@@ -517,6 +852,19 @@
     const target = branchSelect.value;
     branchSelect.value = branchName;
     try { await loadRepository(repoName, target); } catch (error) { showError(`Branch konnte nicht geladen werden: ${error.message}`); }
+  });
+  document.getElementById('open-dashboard').addEventListener('click', async () => {
+    try {
+      if (activeFileLoaded) {
+        clearTimeout(saveTimer);
+        await persistCurrentFile();
+      }
+      document.getElementById('main-container').hidden = true;
+      dashboard.hidden = false;
+      await refreshDashboard();
+    } catch (error) {
+      setStatus(`Änderungen konnten vor dem Wechsel zur Übersicht nicht gespeichert werden: ${error.message}`);
+    }
   });
   window.addEventListener('online', () => setStatus('Internetverbindung verfügbar. Lokales Arbeiten bleibt aktiv.'));
   window.addEventListener('offline', () => setStatus('Offline-Modus: lokale Dateien bleiben verfügbar.'));
@@ -540,6 +888,7 @@
       const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) ?? (!repoName ? localStorage.getItem('latex_ipad_document') : null);
       textarea.value = saved?.content ?? fallback ?? DEFAULT_DOCUMENT;
       activeFileLoaded = saved?.content !== undefined && saved?.content !== null || fallback !== null;
+      await refreshDashboard();
       await loadMonaco();
       await registerServiceWorker();
       if (repoName) repoLabel.textContent = repoName;

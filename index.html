@@ -16,6 +16,15 @@
     select { background: #3c3c3c; }
     button:active { background: #005999; }
     #main-container { flex: 1; min-height: 0; display: flex; position: relative; }
+    #main-container[hidden], #dashboard[hidden] { display: none; }
+    #dashboard { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+    #dashboard-content { width: min(760px, 100%); margin: 0 auto; }
+    #dashboard h1 { margin-top: 0; }
+    #dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 20px 0 28px; }
+    #local-project-list { display: grid; gap: 10px; }
+    .local-project { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #444; border-radius: 6px; background: #252526; }
+    .local-project p { margin: 4px 0 0; color: #aaa; font-size: 13px; overflow-wrap: anywhere; }
+    #local-project-empty { color: #aaa; }
     #sidebar { width: 250px; flex: 0 0 250px; display: flex; flex-direction: column; background: #252526; border-right: 1px solid #444; transition: width .2s, flex-basis .2s; }
     #sidebar.collapsed { width: 0; flex-basis: 0; overflow: hidden; border: 0; }
     .sidebar-heading { padding: 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
@@ -42,6 +51,13 @@
     #repo-list { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; margin: 12px 0; }
     #repo-list button { width: 100%; text-align: left; overflow-wrap: anywhere; }
     #repo-error { color: #ffaaaa; }
+    #create-repo-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
+    #create-repo-dialog::backdrop { background: rgba(0, 0, 0, .75); }
+    #create-repo-dialog label { display: block; margin-top: 12px; }
+    #create-repo-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
+    #create-repo-dialog input[type="checkbox"] { display: inline-block; width: auto; min-height: auto; margin-right: 8px; }
+    #create-repo-error { min-height: 1.4em; color: #ffaaaa; }
+    #create-repo-status { color: #aaa; }
     #log-panel { flex: 0 0 auto; max-height: 25vh; overflow: auto; padding: 8px 10px; color: #ddd; background: #181818; border-top: 1px solid #444; }
     #log-panel[hidden] { display: none; }
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -60,6 +76,8 @@
     <div class="toolbar-group">
       <button id="toggle-sidebar" type="button">☰ Sidebar</button>
       <button id="gh-login-btn" type="button">GitHub Login</button>
+      <button id="open-dashboard" type="button">Übersicht</button>
+      <button id="open-repo-btn" type="button">GitHub-Repo öffnen</button>
       <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
     </div>
     <div class="toolbar-group">
@@ -68,7 +86,19 @@
       <button id="save-btn" type="button">Lokal speichern</button>
     </div>
   </header>
-  <main id="main-container">
+  <section id="dashboard" aria-labelledby="dashboard-title">
+    <div id="dashboard-content">
+      <h1 id="dashboard-title">Lokale Projekte</h1>
+      <p>Gespeicherte Projekte können ohne Internetverbindung weiterbearbeitet werden. GitHub-Zugriff ist separat und benötigt eine Verbindung.</p>
+      <div id="dashboard-actions">
+        <button id="dashboard-open-repo" type="button">GitHub-Repository öffnen</button>
+        <button id="dashboard-create-repo" type="button">Neues GitHub-Repository</button>
+      </div>
+      <p id="local-project-empty" role="status">Lokale Projekte werden geladen…</p>
+      <div id="local-project-list"></div>
+    </div>
+  </section>
+  <main id="main-container" hidden>
     <aside id="sidebar">
       <div class="sidebar-heading">PROJEKTDATEIEN <button id="repo-label" type="button" title="Projekt wechseln">Repo wählen</button></div>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
@@ -100,9 +130,26 @@
     <p id="repo-error" role="alert"></p>
     <div id="repo-list"></div>
     <div class="login-actions">
+      <button id="repo-create" type="button">Neues Repository erstellen</button>
       <button id="repo-retry" type="button" hidden>Erneut laden</button>
       <button id="repo-cancel" type="button">Schließen</button>
     </div>
+  </dialog>
+  <dialog id="create-repo-dialog" aria-labelledby="create-repo-title">
+    <h2 id="create-repo-title">Neues GitHub-Repository</h2>
+    <p>Das Repository wird privat erstellt und mit einer <code>main.tex</code> initialisiert. Das Token benötigt Berechtigungen zum Erstellen eines Repositories und zum Schreiben von Repository-Inhalten.</p>
+    <form id="create-repo-form">
+      <label for="create-repo-name">Repository-Name</label>
+      <input id="create-repo-name" name="name" required pattern="[A-Za-z0-9._-]+" maxlength="100" autocomplete="off">
+      <label for="create-repo-description">Beschreibung (optional)</label>
+      <input id="create-repo-description" name="description" maxlength="350" autocomplete="off">
+      <p id="create-repo-status" role="status"></p>
+      <p id="create-repo-error" role="alert"></p>
+      <div class="login-actions">
+        <button id="create-repo-submit" type="submit">Privates Repository erstellen</button>
+        <button id="create-repo-cancel" type="button">Abbrechen</button>
+      </div>
+    </form>
   </dialog>
   <footer>Offline-Editor wird initialisiert…</footer>
   <script src="js/build-info.js"></script>

@@ -9,7 +9,11 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'save-btn'];
+  'repo-create', 'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'save-btn',
+  'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
+  'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
+  'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
+  'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo'];
 
 function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
@@ -26,6 +30,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
       tagName, hidden: true,
       addEventListener(type, handler) { this.handlers[type] = handler; },
       appendChild(child) { this.children.push(child); },
+      append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       setAttribute(name, value) { this.attributes[name] = value; },
       removeAttribute(name) { delete this.attributes[name]; }
@@ -38,7 +43,11 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
   const repoDialog = elements['repo-dialog'];
   repoDialog.showModal = () => { repoDialog.open = true; };
   repoDialog.close = () => { repoDialog.open = false; repoDialog.handlers.close(); };
+  const createRepoDialog = elements['create-repo-dialog'];
+  createRepoDialog.showModal = () => { createRepoDialog.open = true; };
+  createRepoDialog.close = () => { createRepoDialog.open = false; createRepoDialog.handlers.close(); };
   elements['github-login-form'].reset = () => { elements['github-token'].value = ''; };
+  elements['create-repo-form'].reset = () => {};
   const footer = { textContent: '' };
   const location = new URL(locationHref);
   let replacement;
@@ -50,10 +59,11 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
       querySelector: () => footer,
       createElement: (tagName) => element(tagName.toUpperCase())
     },
-    navigator: { onLine: false },
+    navigator: { onLine: true },
     sessionStorage: storage, localStorage: {
       getItem: (key) => localValues.get(key) ?? null,
-      setItem: (key, value) => localValues.set(key, value)
+      setItem: (key, value) => localValues.set(key, value),
+      removeItem: (key) => localValues.delete(key)
     },
     location, URL, AbortController, setTimeout, clearTimeout,
     history: { replaceState(_state, _title, url) { replacement = url; } },
@@ -61,6 +71,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
       requests.push({ url, options });
       return fetchImpl ? fetchImpl(url, options) : response([]);
     },
+    TextEncoder, btoa,
     alert(message) { throw new Error(`Unexpected alert: ${message}`); }
   };
   vm.runInNewContext(source, context);
@@ -328,4 +339,89 @@ test('Ein leeres Repository wird ohne Baumabfrage geöffnet', async () => {
   await app.elements['repo-list'].children[0].handlers.click();
   assert.match(app.elements['file-list'].textContent, /Keine Ordner oder Dateien/);
   assert.equal(app.elements['repo-label'].textContent, 'alice/empty');
+});
+
+test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline', async () => {
+  const project = { id: 'alice/offline', repo: 'alice/offline', branch: 'main', activePath: 'chapter.tex', paths: ['chapter.tex'], updatedAt: 1 };
+  const app = setup({
+    localInitial: {
+      latex_ipad_projects: JSON.stringify([project]),
+      'latex_ipad_document:alice/offline:main:chapter.tex': 'Lokal gespeicherter Inhalt'
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['local-project-list'].children.length, 1);
+  assert.match(app.elements['local-project-list'].children[0].children[0].children[0].textContent, /alice\/offline/);
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements['main-container'].hidden, false);
+  assert.equal(app.elements['dashboard'].hidden, true);
+  assert.equal(app.elements.editor.value, 'Lokal gespeicherter Inhalt');
+  assert.match(app.footer.textContent, /Offline-Projekt geöffnet/);
+});
+
+test('Neues privates Repository wird erstellt und mit main.tex initialisiert', async () => {
+  const app = setup({ fetchImpl: async (url, options) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos') && options.method !== 'POST') return response([]);
+    if (url.endsWith('/user/repos') && options.method === 'POST') return response({
+      full_name: 'alice/new-project', default_branch: 'main'
+    });
+    if (url.endsWith('/contents/main.tex') && options.method === 'PUT') return response({});
+    if (url.includes('/contents/main.tex?ref=main')) return {
+      ok: true, text: async () => '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}'
+    };
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree: [{ type: 'blob', path: 'main.tex' }] });
+    throw new Error(`Unerwartete URL: ${url}`);
+  } });
+  app.context.navigator.onLine = true;
+  await submit(app, 'github_pat_test123');
+  app.elements['dashboard-create-repo'].handlers.click();
+  app.elements['create-repo-name'].value = 'new-project';
+  await app.elements['create-repo-form'].handlers.submit({ preventDefault() {} });
+  const createRequest = app.requests.find((request) => request.url.endsWith('/user/repos') && request.options.method === 'POST');
+  const fileRequest = app.requests.find((request) => request.url.endsWith('/contents/main.tex'));
+  assert.deepEqual(JSON.parse(createRequest.options.body), {
+    name: 'new-project', private: true, auto_init: true
+  });
+  assert.equal(Buffer.from(JSON.parse(fileRequest.options.body).content, 'base64').toString('utf8'),
+    '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}');
+  assert.equal(app.elements['repo-label'].textContent, 'alice/new-project');
+  assert.equal(app.elements['main-container'].hidden, false);
+  assert.equal(app.elements['create-repo-dialog'].open, false);
+  assert.match(app.footer.textContent, /Privates Repository erstellt/);
+});
+
+test('Fehler bei main.tex lässt die Repository-Erstellung später fortsetzen', async () => {
+  let contentAttempts = 0;
+  const app = setup({ fetchImpl: async (url, options) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos') && options.method !== 'POST') return response([]);
+    if (url.endsWith('/user/repos') && options.method === 'POST') return response({
+      full_name: 'alice/retry-project', default_branch: 'main'
+    });
+    if (url.endsWith('/contents/main.tex') && options.method === 'PUT') {
+      contentAttempts += 1;
+      return response({}, { status: contentAttempts === 1 ? 403 : 201 });
+    }
+    if (url.includes('/contents/main.tex?ref=main')) return {
+      ok: true, text: async () => '\\documentclass{article}'
+    };
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree: [{ type: 'blob', path: 'main.tex' }] });
+    throw new Error(`Unerwartete URL: ${url}`);
+  } });
+  app.context.navigator.onLine = true;
+  await submit(app, 'github_pat_test123');
+  app.elements['dashboard-create-repo'].handlers.click();
+  app.elements['create-repo-name'].value = 'retry-project';
+  await app.elements['create-repo-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['create-repo-error'].textContent, /wurde erstellt, aber main\.tex/);
+  assert.equal(app.elements['create-repo-submit'].textContent, 'Initialisierung fortsetzen');
+  await app.elements['create-repo-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.requests.filter((request) => request.url.endsWith('/user/repos') && request.options.method === 'POST').length, 1);
+  assert.equal(contentAttempts, 2);
+  assert.equal(app.elements['create-repo-dialog'].open, false);
+  assert.equal(app.elements['repo-label'].textContent, 'alice/retry-project');
 });
