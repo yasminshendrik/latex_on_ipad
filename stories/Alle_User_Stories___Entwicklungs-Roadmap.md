@@ -18,13 +18,16 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 | [2.2](Story-2.2-LaTeX-Dateien-und-Schreibbarkeit-in-der-Sidebar.md) | LaTeX-Dateien und Schreibbarkeit in der Sidebar | Im Code umgesetzt | `.tex`, `.latex` und `.ltx` sind auswählbar; andere Dateien erscheinen nur mit Name und Statussymbol |
 | [2.3](Story-2.3-Ausblendbares-Log.md) | Ausblendbares Log am unteren Rand | Im Code umgesetzt | Vorhandenes technisches Diagnoseprotokoll ist standardmäßig verborgen und über die UI einblendbar |
 | [2.4](Story-2.4-LaTeX-Datei-im-Editor-laden.md) | Ausgewählte LaTeX-Datei im Editor laden | Im Code umgesetzt | Auswahl lädt lokalen Inhalt oder ruft ihn online bei GitHub ab und speichert ihn lokal |
+| [2.5](Story-2.5-Variablen-Quickinfo-im-Editor.md) | Variablen-Quickinfo im Editor | Ausstehend | TeX-Variablen als Links darstellen und aufgelösten Inhalt beim Antippen anzeigen |
+| [2.6](Story-2.6-Durchsuchbare-Variablenauswahl.md) | Durchsuchbare Variablenauswahl | Ausstehend | Projektvariablen über Eingabe von `\` und/oder einen Button durchsuchbar anbieten |
 | 3 | Client-seitiges Linting | Ausstehend | TexLab/WASM und Marker fehlen |
-| 4 | Live-Vorschau | Ausstehend | KaTeX-Integration fehlt |
+| [4](Story-4-Live-Vorschau.md) | Projektbezogene Live-Vorschau | Ausstehend | Gesamtes aktuelles Dokument unter Berücksichtigung des Projekts; technische Umsetzung offen |
 | 4.1 | Azure Build & PDF API | Ausstehend | PDF-Build-Backend/API fehlt |
 | 4.2 | Responsive PDF-Vorschau | Teilweise umgesetzt | Panel und Toggle vorhanden; Resize und echte Vorschau fehlen |
 | 5 | KI-Schreibassistenz | Ausstehend | UI und Syntaxschutz fehlen |
 | 6 | Offline-Fähigkeit & Sync | Teilweise umgesetzt | Service Worker registriert; OAuth-Rücksprung-URLs werden nicht gecacht; lokale Dateien in IndexedDB; Remote-Sync und KI-Commit-Messages fehlen; Monaco benötigt CDN-Verbindung |
 | 8 | Commit-Historie & Undo | Ausstehend | Historie und Rollback fehlen |
+| [9](Story-9-Design-nach-Fiori-Styleguide.md) | Design nach Fiori-Styleguide | Ausstehend | Überarbeitung des Designs der App nach dem Fiori-Styleguide |
 
 ## Aktueller App-Stand
 Die App ist ein lokal editierbarer LaTeX-Editor mit IndexedDB-VFS, optionalem Monaco-Editor (CDN bei Internetverbindung, Texteditor-Fallback offline), Repo-/Branch-Baumansicht über GitHub und einer Service-Worker-PWA-Shell. Die Sidebar kennzeichnet Repository-Berechtigungen, listet Dateien nach Bearbeitbarkeit und lädt ausgewählte `.tex`-, `.latex`- und `.ltx`-Dateien lokal oder bei bestehender Verbindung von GitHub. Andere Dateien bleiben auf Name und Statussymbol beschränkt. Der Editor zeigt beim Öffnen eines Kontexts `main.tex` oder ein neues lokales Dokument; weitere LaTeX-Dateien werden auf Auswahl geöffnet. Änderungen werden nach kurzer Inaktivität lokal gespeichert. Das vorhandene technische Diagnoseprotokoll lässt sich ein- und ausblenden und enthält weiterhin Funktionen zum Leeren und Kopieren. Der GitHub-Login verwendet ein manuell eingegebenes Fine-grained PAT und prüft es über die GitHub-API; Apple Passwörter und der Ende-zu-Ende-Login sind noch nicht praktisch verifiziert. GitHub-Uploads, Branch-Erstellung, Sync-Queue, Linting, PDF-Build, KI-Assistenz und Historie/Undo sind nicht implementiert.
