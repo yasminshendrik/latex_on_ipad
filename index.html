@@ -36,10 +36,18 @@
     .file-readonly { padding: 4px; color: #aaa; }
     .file-tree, .file-tree ul { margin: 0; padding-left: 20px; list-style: none; }
     .file-tree { padding-left: 0; }
-    #editor-container { flex: 1; min-width: 0; min-height: 0; position: relative; }
+    #editor-container { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    #editor-surface { flex: 1; min-height: 0; position: relative; }
     #editor { width: 100%; height: 100%; resize: none; padding: 16px; border: 0; outline: 0; background: #1e1e1e; color: #ddd; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
     #monaco-editor { position: absolute; inset: 0; display: none; }
+    #lint-results { flex: 0 0 auto; max-height: 20%; overflow: auto; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
+    #lint-results ul { margin: 4px 0; padding-left: 20px; }
+    #compile-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
+    #compile-results { flex: 0 0 auto; max-height: 20%; overflow: auto; padding: 0 12px 6px; background: #252526; color: #ddd; font-size: 12px; }
+    #compile-results ul { margin: 4px 0; padding-left: 20px; }
     #preview-container { display: none; width: 40%; overflow: auto; padding: 16px; color: #222; background: #fff; }
+    #preview-status { margin: 4px 0 12px; color: #444; font-size: 13px; }
+    #pdf-pages canvas { display: block; margin: 0 auto 12px; border: 1px solid #ccc; background: #fff; }
     #preview-container.visible { display: block; }
     #github-login-dialog, #repo-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
     #github-login-dialog::backdrop, #repo-dialog::backdrop { background: rgba(0, 0, 0, .75); }
@@ -58,6 +66,9 @@
     #create-repo-dialog input[type="checkbox"] { display: inline-block; width: auto; min-height: auto; margin-right: 8px; }
     #create-repo-error { min-height: 1.4em; color: #ffaaaa; }
     #create-repo-status { color: #aaa; }
+    #sync-conflict-dialog { width: min(680px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
+    #sync-conflict-dialog::backdrop { background: rgba(0, 0, 0, .75); }
+    #sync-conflict-dialog pre { max-height: 32vh; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: #1e1e1e; }
     #log-panel { flex: 0 0 auto; max-height: 25vh; overflow: auto; padding: 8px 10px; color: #ddd; background: #181818; border-top: 1px solid #444; }
     #log-panel[hidden] { display: none; }
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -83,7 +94,7 @@
     <div class="toolbar-group">
       <button id="toggle-preview" type="button">Vorschau</button>
       <button id="toggle-log" type="button" aria-controls="technical-log" aria-expanded="false">Log</button>
-      <button id="save-btn" type="button">Lokal speichern</button>
+      <button id="save-btn" type="button">Speichern</button>
     </div>
   </header>
   <section id="dashboard" aria-labelledby="dashboard-title">
@@ -104,10 +115,23 @@
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
     </aside>
     <section id="editor-container">
-      <textarea id="editor" aria-label="LaTeX-Editor" spellcheck="false"></textarea>
-      <div id="monaco-editor" aria-label="Monaco LaTeX-Editor"></div>
+      <div id="editor-surface">
+        <textarea id="editor" aria-label="LaTeX-Editor" spellcheck="false"></textarea>
+        <div id="monaco-editor" aria-label="Monaco LaTeX-Editor"></div>
+      </div>
+      <div id="lint-results" role="status" aria-live="polite">LaTeX-Prüfung wird gestartet…</div>
+      <div id="compile-bar">
+        <label for="main-file-select">Hauptdatei</label>
+        <select id="main-file-select"><option value="">main.tex</option></select>
+        <span id="compile-summary">Kompilierung noch nicht gelaufen.</span>
+      </div>
+      <div id="compile-results" role="status" aria-live="polite"></div>
     </section>
-    <section id="preview-container"><h3>PDF-Vorschau</h3><p>Die PDF-Vorschau ist noch nicht eingerichtet.</p></section>
+    <section id="preview-container" aria-label="PDF-Vorschau">
+      <h3>PDF-Vorschau</h3>
+      <p id="preview-status" role="status">Noch keine Vorschau.</p>
+      <div id="pdf-pages"></div>
+    </section>
   </main>
   <dialog id="github-login-dialog" aria-labelledby="github-login-title" aria-describedby="github-login-help">
     <h2 id="github-login-title">Mit GitHub verbinden</h2>
@@ -150,6 +174,17 @@
         <button id="create-repo-cancel" type="button">Abbrechen</button>
       </div>
     </form>
+  </dialog>
+  <dialog id="sync-conflict-dialog" aria-labelledby="sync-conflict-title">
+    <h2 id="sync-conflict-title">Änderungskonflikt</h2>
+    <p id="sync-conflict-description"></p>
+    <pre id="sync-conflict-local"></pre>
+    <pre id="sync-conflict-remote"></pre>
+    <div class="login-actions">
+      <button id="sync-conflict-keep-local" type="button">Lokale Version</button>
+      <button id="sync-conflict-use-remote" type="button">Online-Version</button>
+      <button id="sync-conflict-merge" type="button">Merge</button>
+    </div>
   </dialog>
   <footer>Offline-Editor wird initialisiert…</footer>
   <script src="js/build-info.js"></script>

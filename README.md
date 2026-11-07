@@ -5,7 +5,7 @@ Ein LaTeX Editor für das iPad
 
 Beim Start zeigt die App lokal gespeicherte Projekte. „Lokal öffnen“ lädt ausschließlich bereits gespeicherte Dateien und funktioniert offline. Für den Online-Zugriff kann ein GitHub-Repository separat geöffnet werden.
 
-Über „Neues GitHub-Repository“ lässt sich ein privates Repository erstellen und mit `main.tex` initialisieren. Dafür müssen Internetverbindung und Token-Berechtigungen ausreichen. Bearbeitete Dateien werden nach kurzer Inaktivität und während der App-Ausführung alle drei Minuten lokal gespeichert; Browser oder Betriebssystem können eine App im Hintergrund pausieren. Ein Commit/Push-Workflow ist noch nicht verfügbar.
+Über „Neues GitHub-Repository“ lässt sich ein privates Repository erstellen und mit `main.tex` initialisieren. Dafür müssen Internetverbindung und Token-Berechtigungen ausreichen. Beim Online-Öffnen eines Repositorys lädt die App alle unterstützten regulären Dateien des Branches in den lokalen Speicher. Submodule, Symlinks, Git-LFS-Dateien und Dateien über 100 MB werden ausgelassen und gemeldet. Bearbeitete Dateien werden nach kurzer Inaktivität und während der App-Ausführung alle drei Minuten lokal gespeichert; Browser oder Betriebssystem können eine App im Hintergrund pausieren. Der einheitliche Button „Speichern“ sichert lokal. GitHub-Commit und Push über diesen Button sind noch nicht verfügbar.
 
 ## GitHub verbinden
 
@@ -15,4 +15,13 @@ Für Apple Passwörter kann ein **separater** Eintrag für `yasminshendrik.githu
 
 Nach erfolgreicher Prüfung bei GitHub bleibt das Token bis zur Abmeldung oder zum Ende der Browser-Sitzung im `sessionStorage`. JavaScript derselben Origin kann es dort lesen. Ein gültiges Token garantiert keinen Zugriff auf jedes Repository; dafür müssen Token-Berechtigungen und gegebenenfalls Organisationsrichtlinien stimmen.
 
-Nach dem Login zeigt ein Dialog die Anzahl und Auswahl der von GitHub für das Token zurückgegebenen Repositories. Die Repository-Auswahl kennzeichnet Lese-, Schreib- und Administrationsrechte; fehlende Berechtigungsangaben erscheinen als unbekannt. Über den Repository-Namen in der Sidebar lässt sich die Auswahl erneut öffnen. Ordner werden in der Sidebar hierarchisch angezeigt. `.tex`-, `.latex`- und `.ltx`-Dateien lassen sich auswählen; ihr Inhalt wird zuerst aus dem lokalen Speicher geladen und andernfalls online von GitHub abgerufen und lokal gespeichert. Andere Dateien erscheinen nur mit Name und Statussymbol. Vor einem Dateiwechsel werden lokale Änderungen gespeichert. Das vorhandene technische Diagnoseprotokoll lässt sich über „Log“ ein- und ausblenden und bleibt beim Start verborgen.
+Nach dem Login zeigt ein Dialog die Anzahl und Auswahl der von GitHub für das Token zurückgegebenen Repositories. Die Repository-Auswahl kennzeichnet Lese-, Schreib- und Administrationsrechte; fehlende Berechtigungsangaben erscheinen als unbekannt. Über den Repository-Namen in der Sidebar lässt sich die Auswahl erneut öffnen. Ordner werden in der Sidebar hierarchisch angezeigt. `.tex`-, `.latex`- und `.ltx`-Dateien lassen sich auswählen; ihre Inhalte stehen nach dem Online-Öffnen offline aus dem lokalen Speicher zur Verfügung. Andere Dateien erscheinen nur mit Name und Statussymbol. Beim erneuten Online-Öffnen werden lokale und Remote-Änderungen verglichen; bei Konflikten kann die lokale oder Online-Version gewählt oder ein Merge versucht werden. Vor einem Dateiwechsel werden lokale Änderungen gespeichert. Das vorhandene technische Diagnoseprotokoll lässt sich über „Log“ ein- und ausblenden und bleibt beim Start verborgen.
+
+## Lokale Syntaxprüfung
+
+Die App prüft die aktive Datei während der Bearbeitung in einem lokal ausgelieferten Worker auf ausgewählte Fehler bei geschweiften Klammern, Mathematikbegrenzungen und Umgebungen. Hinweise erscheinen unter dem Editor und bei geladenem Monaco zusätzlich als Markierungen. Die Prüfung funktioniert nach dem Laden der App-Shell auch offline; sie ist keine Kompilierung und erkennt weder alle LaTeX-Fehler noch projektübergreifende Fehler.
+
+Der Worker verwendet den MIT-lizenzierten Parser `@unified-latex/unified-latex-util-pegjs`; die Lizenz liegt unter `js/UNIFIED-LATEX-LICENSE.txt`. Nach Änderungen an `js-src/lint-worker.js` wird das ausgelieferte Bundle mit `npm ci` und `npm run build:lint-worker` neu erzeugt.
+
+## TeX-Engine und Vorschau
+Kompilierung (Story 3/4) nutzt `glyphtex-engine` und PDF.js. Die großen Assets werden nicht eingecheckt: `npm ci && npm run build` erzeugt `js/engine/` und `js/pdfjs/` (der Pages-Workflow macht das automatisch). Lizenzhinweise: `js/THIRD-PARTY-NOTICES.md`.

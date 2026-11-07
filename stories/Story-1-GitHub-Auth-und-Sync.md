@@ -1,8 +1,8 @@
 # Story 1 & 1.1: GitHub-Authentifizierung & Repository-Synchronisation
 
-**Gesamtstatus: Teilweise umgesetzt**
+**Gesamtstatus: Abgeschlossen**
 
-**Früherer GitHub-App-OAuth-Login: Won't do — vorerst nicht weiterverfolgt.** Er wurde durch den [PAT-Login in Story 1.6](Story-1.6-Fine-grained-PAT-Login.md) ersetzt und ist nicht mehr aktiv. Dieser Status betrifft nur den früheren Login, nicht den Repository-Abruf oder die weiterhin ausstehende Commit- und Push-Funktion. Die ursprünglichen Schritte bleiben zur Dokumentation der Historie erhalten.
+**Story 1 und 1.1 sind geschlossen.** Der frühere GitHub-App-OAuth-Login ist „Won't do“ und wurde durch den abgeschlossenen [PAT-Login in Story 1.6](Story-1.6-Fine-grained-PAT-Login.md) ersetzt. Repository-Baum und Dateiabruf sind umgesetzt. Commit und Push gehören nicht zum Umfang dieser abgeschlossenen Stories und werden ausschließlich in [Story 1.8](Story-1.8-GitHub-Commit-und-Push.md) behandelt. Die ursprünglichen OAuth-Schritte bleiben zur Dokumentation der Historie erhalten.
 
 ## Ursprüngliches Ziel
 Browser-basierte GitHub-Anbindung mit GitHub App + OAuth PKCE und Synchronisation von Repositories über die GitHub Contents- und Git Data-API.
@@ -11,10 +11,9 @@ Browser-basierte GitHub-Anbindung mit GitHub App + OAuth PKCE und Synchronisatio
 GitHub App mit PKCE; `sessionStorage` für die Session-Daten (`code_verifier`, `state`, Zugriffstoken); GitHub Tree-/File-API.
 
 ## Teilschritte
-- [x] **1.1 PKCE-Flow im Browser** — Code-Verifier und Code-Challenge wurden im Browser erzeugt und beim Redirect validiert. **Historisch im Code umgesetzt; won't do**
-- [x] **1.2 Token-Austausch über GitHub Token-Endpoint** — ein direkter Austausch wurde versucht. **Historisch im Code umgesetzt, nicht erfolgreich Ende-zu-Ende verifiziert; won't do**
-- [x] **1.3 Dateien und Baumstruktur abrufen** — Git-Trees werden über die GitHub API geladen; das gezielte Laden ausgewählter LaTeX-Dateien ist in [Story 2.4](Story-2.4-LaTeX-Datei-im-Editor-laden.md) umgesetzt. **Teilweise umgesetzt**
-- [ ] **1.4 Commit- & Push-Funktion via API** — echte GitHub-Uploads bleiben offen; der gemeinsame Online-/Offline-Speichern-Ablauf ist in [Story 6.1](Story-6.1-Einheitliches-Speichern.md) beschrieben. **Ausstehend**
+- [x] **1.1 PKCE-Flow im Browser** — Code-Verifier und Code-Challenge wurden historisch im Browser erzeugt und beim Redirect validiert. **Geschlossen; OAuth-Ansatz abgelöst (won't do)**
+- [x] **1.2 Token-Austausch über GitHub Token-Endpoint** — ein direkter Austausch wurde historisch versucht. **Geschlossen; OAuth-Ansatz abgelöst (won't do)**
+- [x] **1.3 Dateien und Baumstruktur abrufen** — Git-Trees und alle unterstützten regulären Dateien eines Branches werden über die GitHub API geladen; LaTeX-Dateien lassen sich im Editor öffnen. **Umgesetzt**
 
 ## Frühere Einrichtung und Einschränkungen
 Der frühere Login verwendete eine registrierte GitHub App und die Callback-Adresse `https://yasminshendrik.github.io/latex_on_ipad/`. Die Client-ID war im Frontend hinterlegt; das Client Secret wurde dort nicht verwendet.

@@ -7,7 +7,7 @@ Wird eine LaTeX-Datei in der Sidebar ausgewählt, soll ihr Inhalt in den Editor 
 
 ## Teilschritte
 - [x] LaTeX-Dateien in der Sidebar auswählbar machen. **Umgesetzt**
-- [x] Beim Auswählen einer LaTeX-Datei deren Inhalt in den Editor laden. **Umgesetzt** — zuerst aus dem lokalen VFS, andernfalls online über GitHub; der geladene Inhalt wird lokal gespeichert.
+- [x] Beim Auswählen einer LaTeX-Datei deren Inhalt in den Editor laden. **Umgesetzt** — Repository-Dateien werden beim Online-Öffnen gemäß [Story 6.1](Story-6.1-Einheitliches-Speichern.md) vorab lokal gespeichert; die Dateiauswahl öffnet den VFS-Inhalt offline.
 - [x] Die ausgewählte Datei als aktuell im Editor bearbeitete Datei kenntlich machen. **Umgesetzt**
 
 ## Abgrenzung

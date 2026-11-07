@@ -1,27 +1,28 @@
-# Story 6.1: Einheitliches Speichern online und offline
+# Story 6.1: Einheitliches lokales Speichern und Konfliktauflösung
 
-**Gesamtstatus: Teilweise umgesetzt**
+**Gesamtstatus: Umgesetzt**
 
 ## Ziel
-Dateien sollen unabhängig vom Verbindungsstatus über denselben Speichern-Button gesichert werden. Die lokale Speicherung bleibt die Grundlage; bei bestehender Verbindung wird sie beim manuellen Speichern mit einem GitHub-Commit verbunden.
+Ein Repository-Branch wird vollständig lokal verfügbar gemacht und Änderungen werden unabhängig vom Verbindungsstatus lokal gesichert. Der einheitliche Button heißt immer „Speichern“. GitHub-Commits und Pushes sind aus dieser Story ausgegliedert und in [Story 1.8](Story-1.8-GitHub-Commit-und-Push.md) zusammengefasst.
 
 ## Anforderungen
-- [ ] **Nach dem Öffnen eines Repositories lokal speichern** — alle regulären Dateien des geöffneten Repository-Branches für die Offline-Nutzung herunterladen und lokal sichern. Git-Submodule und Git LFS müssen zunächst nicht unterstützt werden; solche Fälle sind klar zu melden.
-- [x] **Regelmäßig im Hintergrund lokal speichern** — alle drei Minuten automatisch lokal sichern, ohne dass eine manuelle Aktion erforderlich ist. Das bereits vorhandene lokale Auto-Speichern nach kurzer Inaktivität bleibt bestehen. **Im Code umgesetzt**
-- [ ] **Einheitlicher Speichern-Button** — unabhängig davon, ob die App online oder offline ist, gibt es nur einen Button mit der Beschriftung „Speichern“.
-- [ ] **Online speichern** — der Speichern-Button sichert lokal und überträgt die Änderungen in einem Vorgang mit einem Commit zu GitHub. Die Commit-Nachricht wird beim Speichern eingegeben.
-- [ ] **Offline speichern** — derselbe Button sichert lokal; ohne Internetverbindung wird kein GitHub-Commit versucht.
-- [ ] **Konflikte beim erneuten Öffnen** — bei abweichenden lokalen und Online-Änderungen den Konflikt anzeigen und die Wahl zwischen lokaler Version, Online-Version und Merge anbieten. Merge soll automatisch zusammenführen; nicht automatisch lösbare Konflikte werden manuell bearbeitet.
+- [x] **Repository lokal verfügbar machen** — beim Online-Öffnen alle regulären Dateien des ausgewählten Branches herunterladen und lokal sichern. Git-Submodule, symbolische Links, Git-LFS-Dateien und Dateien über 100 MB werden nicht heruntergeladen und klar gemeldet. **Im Code umgesetzt**
+- [x] **Beim Öffnen lokal sichern** — heruntergeladene Dateien sowie ihre Online-Basisversion und Git-SHA im lokalen VFS speichern. **Im Code umgesetzt**
+- [x] **Regelmäßig im Hintergrund lokal speichern** — alle drei Minuten sichern; bestehendes Auto-Speichern nach kurzer Inaktivität bleibt aktiv. **Im Code umgesetzt**
+- [x] **Einheitlicher Speichern-Button** — unabhängig vom Verbindungsstatus heißt der Button „Speichern“ und sichert lokal. **Im Code umgesetzt**
+- [x] **Offline speichern** — ohne Netzwerkzugriff lokal sichern und keinen GitHub-Commit vortäuschen. **Im Code umgesetzt**
+- [x] **Konflikte beim erneuten Online-Öffnen** — lokale und geänderte Online-Version vergleichen und die Wahl zwischen lokaler Version, Online-Version und Merge anbieten. **Im Code umgesetzt**
+- [x] **Merge** — nicht überlappende Änderungen automatisch zusammenführen; überlappende Änderungen oder zu große Dateien mit Konfliktmarkierungen für manuelle Bearbeitung im Editor öffnen. **Im Code umgesetzt**
 
 ## Abnahmekriterien
-- Nach dem Öffnen eines Repositories sind alle regulären Dateien des geöffneten Branches lokal vorhanden. Git-Submodule und Git-LFS-Dateien werden, solange sie nicht unterstützt sind, deutlich gemeldet.
-- Änderungen werden auch bei längerer Bearbeitung ohne manuelles Speichern wiederkehrend lokal gesichert.
-- Der Speichern-Button und seine Beschriftung ändern sich nicht abhängig vom Online-Status.
-- Online führt ein Speichervorgang lokale Sicherung und GitHub-Commit mit eingegebener Commit-Nachricht aus; Fehler beim Remote-Speichern werden sichtbar angezeigt und die lokale Kopie bleibt erhalten.
-- Offline führt der Speichern-Button eine lokale Sicherung aus und zeigt keinen Erfolg für einen GitHub-Commit an.
-- Bei einem Konflikt beim erneuten Öffnen kann zwischen lokaler und Online-Version oder einem automatischen Merge mit manueller Bearbeitung nicht lösbarer Konflikte gewählt werden.
+- Alle unterstützten regulären Repository-Dateien eines Branches sind nach erfolgreichem Online-Öffnen lokal vorhanden.
+- Nicht unterstützte Dateiarten werden klar gemeldet und nicht als offline verfügbar ausgegeben.
+- Die regelmäßige Sicherung läuft alle drei Minuten, solange Browser und Betriebssystem die App nicht pausieren.
+- Die Beschriftung des Speichern-Buttons ist unabhängig vom Online-Status „Speichern“.
+- Ein erneutes Öffnen überschreibt lokale Änderungen nicht stillschweigend; bei echten Konflikten kann zwischen lokal, online und Merge gewählt werden.
+- Lokal gespeicherte Dateien werden über `baseContent` und den letzten Remote-SHA mit der Online-Version verglichen.
 
 ## Abgrenzung
-Die Anforderungen führen keine automatische Remote-Synchronisierung im Hintergrund oder nach einer späteren Wiederverbindung ein. Die bestehende Sync-Queue und KI-generierte Commit-Messages bleiben Teil der übergeordneten [Story 6](Story-6-Offline-und-Sync.md).
+Commit und Push der lokalen Änderungen sind in [Story 1.8](Story-1.8-GitHub-Commit-und-Push.md) gebündelt. Eine automatische Remote-Synchronisierung im Hintergrund oder nach einer späteren Wiederverbindung ist nicht Teil dieser Story. KI-generierte Commit-Nachrichten bleiben Teil des übergeordneten Online-Sync-Backlogs in [Story 6](Story-6-Offline-und-Sync.md).
 
 Browser und Betriebssystem können eine inaktive oder im Hintergrund befindliche App pausieren; während dieser Zeit kann die regelmäßige Sicherung nicht garantiert ausgeführt werden.

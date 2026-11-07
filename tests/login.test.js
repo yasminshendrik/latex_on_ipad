@@ -6,16 +6,19 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const ids = ['editor', 'monaco-editor', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
+const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'save-btn',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
-  'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo'];
+  'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo', 'sync-conflict-dialog',
+  'sync-conflict-description', 'sync-conflict-local', 'sync-conflict-remote',
+  'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
+  'compile-summary', 'compile-results', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
 
-function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'https://example.test/app/' } = {}) {
+function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
   const requests = [];
   const storage = {
@@ -46,6 +49,9 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
   const createRepoDialog = elements['create-repo-dialog'];
   createRepoDialog.showModal = () => { createRepoDialog.open = true; };
   createRepoDialog.close = () => { createRepoDialog.open = false; createRepoDialog.handlers.close(); };
+  const conflictDialog = elements['sync-conflict-dialog'];
+  conflictDialog.showModal = () => { conflictDialog.open = true; };
+  conflictDialog.close = () => { conflictDialog.open = false; };
   elements['github-login-form'].reset = () => { elements['github-token'].value = ''; };
   elements['create-repo-form'].reset = () => {};
   const footer = { textContent: '' };
@@ -53,9 +59,15 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
   let replacement;
   const intervals = [];
   const window = { addEventListener() {} };
+  if (monaco) {
+    window.crypto = {};
+    window.monaco = monaco;
+    window.require = { config: () => (_modules, callback) => callback() };
+  }
   const context = {
     window, document: {
       title: 'test',
+      head: { appendChild(script) { if (monaco) script.onload(); } },
       getElementById: (id) => elements[id],
       querySelector: () => footer,
       createElement: (tagName) => element(tagName.toUpperCase())
@@ -64,19 +76,30 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'htt
     sessionStorage: storage, localStorage: {
       getItem: (key) => localValues.get(key) ?? null,
       setItem: (key, value) => localValues.set(key, value),
-      removeItem: (key) => localValues.delete(key)
+      removeItem: (key) => localValues.delete(key),
+      get length() { return localValues.size; },
+      key: (index) => [...localValues.keys()][index] ?? null
     },
-    location, URL, AbortController, setTimeout, clearTimeout,
+    location, URL, AbortController, Worker: WorkerClass,
+    setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timer.unref?.(); return timer; },
+    clearTimeout,
     setInterval(callback, delay) { intervals.push({ callback, delay }); },
     history: { replaceState(_state, _title, url) { replacement = url; } },
     fetch: async (url, options) => {
       requests.push({ url, options });
       return fetchImpl ? fetchImpl(url, options) : response([]);
     },
-    TextEncoder, btoa,
+    TextEncoder, TextDecoder, Uint8Array, btoa,
     alert(message) { throw new Error(`Unexpected alert: ${message}`); }
   };
-  vm.runInNewContext(source, context);
+  const testSource = exposeSave
+    ? source.replace('  initialize();', `  window.testSave = {
+        persistCurrentFile, readRemoteFile,
+        setContext(repo, branch, path) { repoName = repo; branchName = branch; activePath = path; }
+      };
+  initialize();`)
+    : source;
+  vm.runInNewContext(testSource, context);
   return { elements, values, localValues, requests, footer, context, intervals, get replacement() { return replacement; } };
 }
 
@@ -88,6 +111,80 @@ function submit(app, value) {
   app.elements['github-token'].value = value;
   return app.elements['github-login-form'].handlers.submit({ preventDefault() {} });
 }
+
+test('Syntaxprüfung nutzt den lokalen Worker und verwirft veraltete Ergebnisse', async () => {
+  let worker;
+  class FakeWorker {
+    constructor(url) { this.url = url; this.requests = []; worker = this; }
+    postMessage(data) { this.requests.push(data); }
+    terminate() {}
+  }
+  const app = setup({ WorkerClass: FakeWorker });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(worker.url, './js/lint-worker.js');
+  const first = worker.requests.at(-1);
+  app.elements.editor.value = '{offen';
+  app.elements.editor.handlers.input();
+  worker.onmessage({ data: { id: first.id, diagnostics: [] } });
+  assert.match(app.elements['lint-results'].textContent, /läuft/);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  const latest = worker.requests.at(-1);
+  assert.equal(latest.content, '{offen');
+  worker.onmessage({ data: { id: latest.id, diagnostics: [{
+    message: 'Geschweifte Klammer nicht geschlossen.',
+    start: { line: 1, column: 1 },
+    end: { line: 1, column: 2 }
+  }] } });
+  assert.match(app.elements['lint-results'].children[0].textContent, /1 Hinweis/);
+  assert.match(app.elements['lint-results'].children[1].children[0].textContent, /Zeile 1/);
+  worker.onerror();
+  assert.match(app.elements['lint-results'].textContent, /nicht verfügbar/);
+});
+
+test('Syntaxprüfung setzt und entfernt Monaco-Markierungen bei Änderungen', async () => {
+  let worker;
+  let change;
+  let value = '';
+  const calls = [];
+  const model = {};
+  class FakeWorker {
+    constructor() { worker = this; }
+    postMessage(data) { this.request = data; }
+    terminate() {}
+  }
+  const monaco = {
+    MarkerSeverity: { Error: 8 },
+    editor: {
+      create(_host, options) {
+        value = options.value;
+        return {
+          getValue: () => value,
+          getModel: () => model,
+          onDidChangeModelContent: (handler) => { change = handler; }
+        };
+      },
+      setModelMarkers(currentModel, owner, markers) { calls.push({ currentModel, owner, markers }); }
+    }
+  };
+  const app = setup({ WorkerClass: FakeWorker, monaco });
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.ok(worker.request);
+  worker.onmessage({ data: { id: worker.request.id, diagnostics: [{
+    message: 'Testfehler',
+    start: { line: 2, column: 3 },
+    end: { line: 2, column: 4 }
+  }] } });
+  const result = calls.at(-1);
+  assert.equal(result.currentModel, model);
+  assert.equal(result.owner, 'latex-lint');
+  assert.equal(result.markers[0].startLineNumber, 2);
+  assert.equal(result.markers[0].startColumn, 3);
+  assert.equal(result.markers[0].message, 'Testfehler');
+  assert.match(app.elements['lint-results'].children[0].textContent, /1 Hinweis/);
+  value = 'Korrigiert';
+  change();
+  assert.equal(calls.at(-1).markers.length, 0);
+});
 
 test('Formular enthält nur ein verdecktes Token-Feld für den Passwortmanager', () => {
   assert.doesNotMatch(html, /id="github-username"/);
@@ -169,6 +266,7 @@ test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum 
       { type: 'tree', path: 'ordner' }, { type: 'tree', path: 'ordner/nested' },
       { type: 'blob', path: 'main.tex' }
     ] });
+    if (url.includes('/contents/')) return { ok: true, text: async () => `Inhalt von ${url}` };
     throw new Error(`Unerwartete URL: ${url}`);
   } });
   await submit(app, 'github_pat_test123');
@@ -226,6 +324,7 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
         assert.equal(options.headers.Accept, 'application/vnd.github.raw');
         return { ok: true, text: async () => '\\chapter{Geladen}' };
       }
+      if (url.includes('/contents/')) return { ok: true, text: async () => `Inhalt von ${url}` };
       throw new Error(`Unerwartete URL: ${url}`);
     }
   });
@@ -241,6 +340,7 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   assert.equal(bibliography.tagName, 'SPAN');
   assert.equal(bibliography.attributes['aria-label'], 'Nicht bearbeitbare Datei: refs.bib');
   assert.equal(chapter.attributes['aria-current'], undefined);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:refs.bib'), 'Inhalt von https://api.github.com/repos/alice/project/contents/refs.bib?ref=main');
   await main.handlers.click();
   assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
   await chapter.handlers.click();
@@ -254,6 +354,66 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   assert.equal(app.elements.editor.value, 'Anhang lokal');
   assert.equal(chapter.attributes['aria-current'], undefined);
   assert.equal(nested.attributes['aria-current'], 'page');
+});
+
+test('Repository-Öffnen lädt alle regulären Dateien und meldet Git-LFS sowie Submodule', async () => {
+  const lfsPointer = 'version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 10\n';
+  const app = setup({ localInitial: {
+    'latex_ipad_document:alice/project:main:data.bin': 'Alte lokale LFS-Datei'
+  }, fetchImpl: async (url) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos')) return response([{ full_name: 'alice/project', default_branch: 'main' }]);
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree: [
+      { type: 'blob', path: 'main.tex', sha: 'main-sha', size: 12, mode: '100644' },
+      { type: 'blob', path: 'data.bin', sha: 'lfs-sha', size: 10, mode: '100644' },
+      { type: 'tree', path: 'vendor' },
+      { type: 'commit', path: 'vendor/package', sha: 'submodule-sha', mode: '160000' }
+    ] });
+    if (url.includes('/contents/data.bin')) return { ok: true, text: async () => lfsPointer };
+    if (url.includes('/contents/main.tex')) return { ok: true, text: async () => 'Main-Datei' };
+    throw new Error(`Unerwartete URL: ${url}`);
+  } });
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Main-Datei');
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:data.bin'), undefined);
+  assert.match(app.footer.textContent, /Git LFS/);
+  assert.match(app.footer.textContent, /Git-Submodule/);
+  const vendor = app.elements['file-list'].children[0].children.find((row) => row.children[0].textContent.includes('vendor'));
+  const submodule = vendor.children[1].children[0].children[0];
+  assert.match(submodule.attributes['aria-label'], /Git-Submodule nicht unterstützt/);
+});
+
+test('Beim Wiederöffnen lassen sich parallele lokale und Online-Änderungen zusammenführen', async () => {
+  let remoteContent = 'Lokal: alt\nGemeinsam: alt\nOnline: alt';
+  let remoteSha = 'base-sha';
+  const app = setup({ fetchImpl: async (url) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos')) return response([{ full_name: 'alice/merge', default_branch: 'main' }]);
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree: [
+      { type: 'blob', path: 'main.tex', sha: remoteSha, size: 64, mode: '100644' }
+    ] });
+    if (url.includes('/contents/main.tex')) return { ok: true, text: async () => remoteContent };
+    throw new Error(`Unerwartete URL: ${url}`);
+  } });
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
+  app.elements.editor.value = 'Lokal: geändert\nGemeinsam: alt\nOnline: alt';
+  await app.elements['save-btn'].handlers.click();
+  remoteContent = 'Lokal: alt\nGemeinsam: alt\nOnline: geändert';
+  remoteSha = 'remote-sha';
+  await app.elements['repo-label'].handlers.click();
+  const opening = app.elements['repo-list'].children[0].handlers.click();
+  for (let attempt = 0; attempt < 10 && !app.elements['sync-conflict-dialog'].open; attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  assert.equal(app.elements['sync-conflict-dialog'].open, true);
+  app.elements['sync-conflict-merge'].handlers.click();
+  await opening;
+  assert.equal(app.elements.editor.value, 'Lokal: geändert\nGemeinsam: alt\nOnline: geändert');
+  assert.match(app.footer.textContent, /Repo geladen/);
 });
 
 test('Listenfehler, leere Liste und unsichere Paginierung werden sichtbar behandelt', async () => {
@@ -292,6 +452,8 @@ test('Repo- und Branchwechsel speichern Änderungen unter dem alten Kontext', as
       if (url.endsWith('/user')) return response({});
       if (url.includes('/user/repos')) return response([{ full_name: 'alice/new', default_branch: 'main' }]);
       if (url.includes('/branches')) return response([{ name: 'main' }, { name: 'dev' }]);
+      if (url.includes('/git/trees/')) return response({ truncated: false, tree: [{ type: 'blob', path: 'main.tex' }] });
+      if (url.includes('/contents/main.tex')) return { ok: true, text: async () => 'Neuer Inhalt' };
       return response({ truncated: false, tree: [{ type: 'blob', path: 'main.tex' }] });
     }
   });
@@ -307,6 +469,109 @@ test('Repo- und Branchwechsel speichern Änderungen unter dem alten Kontext', as
   assert.equal(app.localValues.get('latex_ipad_document:alice/new:main:main.tex'), 'Main geändert');
   assert.equal(app.localValues.get('gh_current_branch'), 'dev');
   assert.notEqual(app.elements.editor.value, 'Main geändert');
+});
+
+test('Ein vorgemerktes Speichern behält Repository, Branch und Pfad bei Kontextwechsel', async () => {
+  const app = setup({ exposeSave: true });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  app.context.window.testSave.setContext('alice/old', 'main', 'alt.tex');
+  app.elements.editor.value = 'Alter Inhalt';
+  const save = app.context.window.testSave.persistCurrentFile(true);
+  app.context.window.testSave.setContext('alice/new', 'dev', 'neu.tex');
+  await save;
+  assert.equal(app.localValues.get('latex_ipad_document:alice/old:main:alt.tex'), 'Alter Inhalt');
+  assert.equal(app.localValues.has('latex_ipad_document:alice/old:dev:neu.tex'), false);
+  assert.match(app.footer.textContent, /alt\.tex/);
+});
+
+async function texWorkerSetup(localInitial = {}) {
+  const workers = [];
+  class FakeWorker {
+    constructor(url) { this.url = url; this.requests = []; workers.push(this); }
+    postMessage(data) { this.requests.push(data); }
+    terminate() { this.terminated = true; }
+  }
+  const app = setup({ WorkerClass: FakeWorker, exposeSave: true, localInitial });
+  const tex = () => workers.find((worker) => worker.url === './js/tex-worker.js');
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+  await tick();
+  return { app, tex, tick };
+}
+
+test('Lokales Speichern startet die Kompilierung; Diagnosen und unveränderte Stände werden behandelt', async () => {
+  const { app, tex, tick } = await texWorkerSetup({ 'latex_ipad_document:local:main:kapitel/eins.tex': 'Kapitel' });
+  app.elements.editor.value = '\\input{kapitel/eins}';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  const first = tex().requests[0];
+  assert.equal(first.entry, 'main.tex');
+  assert.equal(first.files['main.tex'], '\\input{kapitel/eins}');
+  assert.equal(first.files['kapitel/eins.tex'], 'Kapitel');
+  assert.equal(app.elements['main-file-select'].value, 'main.tex');
+  tex().onmessage({ data: { id: first.id, status: 'errors', pdf: new Uint8Array([37, 80]).buffer, diagnostics: [
+    { severity: 'error', file: './main.tex', line: 1, message: 'Undefined control sequence', package: null }
+  ] } });
+  await tick();
+  assert.match(app.elements['compile-summary'].textContent, /mit Fehlern \(1 Fehler, 0 Warnungen\)/);
+  assert.match(app.elements['compile-results'].children[0].children[0].textContent, /main\.tex:1 – Undefined control sequence/);
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  assert.equal(tex().requests.length, 1);
+  app.elements.editor.value = '\\input{kapitel/eins} geändert';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  assert.equal(tex().requests.length, 2);
+});
+
+test('Während einer laufenden Kompilierung wird nur der neueste Stand nachgeholt', async () => {
+  const { app, tex, tick } = await texWorkerSetup();
+  for (const value of ['Eins', 'Zwei', 'Drei']) {
+    app.elements.editor.value = value;
+    await app.elements['save-btn'].handlers.click();
+    await tick();
+  }
+  assert.equal(tex().requests.length, 1);
+  tex().onmessage({ data: { id: tex().requests[0].id, status: 'spotless', diagnostics: [] } });
+  await tick();
+  assert.equal(tex().requests.length, 2);
+  assert.equal(tex().requests[1].files['main.tex'], 'Drei');
+});
+
+test('Ohne main.tex wird keine Datei geraten; die Auswahl wird pro Projekt gemerkt', async () => {
+  const { app, tex, tick } = await texWorkerSetup({ 'latex_ipad_document:local:main:b.tex': 'B' });
+  app.context.window.testSave.setContext('', 'main', 'a.tex');
+  app.elements.editor.value = 'A';
+  await app.context.window.testSave.persistCurrentFile();
+  await tick();
+  assert.equal(tex(), undefined);
+  assert.match(app.elements['compile-summary'].textContent, /Keine Hauptdatei/);
+  app.elements['main-file-select'].value = 'b.tex';
+  app.elements['main-file-select'].handlers.change();
+  await tick();
+  assert.equal(app.localValues.get('latex_ipad_main:local:main'), 'b.tex');
+  assert.equal(tex().requests[0].entry, 'b.tex');
+});
+
+test('Fehler des TeX-Workers werden angezeigt und nicht als Vorschau ausgegeben', async () => {
+  const { app, tex, tick } = await texWorkerSetup();
+  app.elements.editor.value = 'X';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  tex().onmessage({ data: { id: tex().requests[0].id, error: 'tectonic_wasm.wasm konnte nicht geladen werden (HTTP 404).' } });
+  await tick();
+  assert.match(app.elements['compile-summary'].textContent, /nicht möglich: tectonic_wasm/);
+  assert.match(app.elements['preview-status'].textContent, /Keine Vorschau/);
+});
+
+test('Binäre Remote-Dateien bleiben byteweise erhalten, Text wird weiterhin dekodiert', async () => {
+  const app = setup({ exposeSave: true });
+  const { readRemoteFile } = app.context.window.testSave;
+  const binary = await readRemoteFile({ arrayBuffer: async () => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255]).buffer });
+  assert.deepEqual([...binary.bytes], [0x89, 0x50, 0x4e, 0x47, 0, 255]);
+  const invalid = await readRemoteFile({ arrayBuffer: async () => new Uint8Array([0xff, 0xfe, 0x41]).buffer });
+  assert.ok(invalid.bytes);
+  const text = await readRemoteFile({ arrayBuffer: async () => new TextEncoder().encode('Grüße \\LaTeX').buffer });
+  assert.equal(text.text, 'Grüße \\LaTeX');
 });
 
 test('Abbruch während des Öffnens verändert das aktive Repository nicht', async () => {
@@ -374,7 +639,7 @@ test('Regelmäßige lokale Sicherung arbeitet unabhängig von Inaktivität und N
   app.intervals[0].callback();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.localValues.get('latex_ipad_document:local:main:main.tex'), 'Lange Bearbeitung');
-  assert.match(html, /id="save-btn"[^>]*>Lokal speichern<\/button>/);
+  assert.match(html, /id="save-btn"[^>]*>Speichern<\/button>/);
 });
 
 test('Neues privates Repository wird erstellt und mit main.tex initialisiert', async () => {

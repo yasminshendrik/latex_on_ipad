@@ -14,12 +14,15 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
   const cached = new Map(Object.entries(entries));
   const deletedCaches = [];
   const writes = [];
+  const addedAssets = [];
   const networkRequests = [];
   const index = { name: 'index' };
-  const network = { name: 'network', clone() { return this; } };
+  const network = { name: 'network', ok: true, clone() { return this; } };
   const cache = {
+    async addAll(assets) { addedAssets.push(...assets); },
     async keys() { return [...cached.keys()].map((url) => ({ url })); },
     async delete(request) { return cached.delete(request.url); },
+    async match(request) { return cached.get(request.url); },
     async put(request, response) { writes.push(request.url); cached.set(request.url, response); }
   };
   const caches = {
@@ -35,6 +38,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
     location: { origin },
     registration: { scope },
     clients: { claim() {} },
+    skipWaiting() {},
     addEventListener(type, handler) { handlers[type] = handler; }
   };
   vm.runInNewContext(source, {
@@ -45,8 +49,18 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
       return network;
     }
   });
-  return { handlers, cached, deletedCaches, writes, networkRequests, index, network };
+  return { handlers, cached, deletedCaches, writes, networkRequests, index, network, addedAssets };
 }
+
+test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
+  const worker = createWorker();
+  let installation;
+  worker.handlers.install({ waitUntil(value) { installation = value; } });
+  await installation;
+  assert.ok(worker.addedAssets.includes('./js/lint-worker.js'));
+  assert.ok(worker.addedAssets.includes('./js/tex-worker.js'));
+  assert.ok(!worker.addedAssets.some((asset) => /engine|pdfjs/.test(asset)));
+});
 
 function dispatchFetch(worker, url, mode = 'navigate') {
   let response;
@@ -102,4 +116,16 @@ test('Gewöhnliche Navigation und Assets behalten das bestehende Cache-Verhalten
 test('Normale Navigation fällt offline auf die App-Shell zurück', async () => {
   const worker = createWorker({ networkFails: true });
   assert.equal(await dispatchFetch(worker, `${scope}?view=editor`), worker.index);
+});
+
+test('Große Engine- und PDF.js-Dateien werden beim ersten Abruf gecacht und danach offline geliefert', async () => {
+  const online = createWorker();
+  for (const name of ['engine/tectonic_wasm.wasm', 'pdfjs/pdf.min.mjs']) {
+    const url = `${scope}js/${name}`;
+    assert.equal(await dispatchFetch(online, url, 'same-origin'), online.network);
+    assert.equal(online.cached.get(url), online.network);
+  }
+  const offline = createWorker({ networkFails: true, entries: { [`${scope}js/engine/tectonic-bundle.tar.gz`]: { name: 'bundle' } } });
+  assert.equal((await dispatchFetch(offline, `${scope}js/engine/tectonic-bundle.tar.gz`, 'same-origin')).name, 'bundle');
+  await assert.rejects(dispatchFetch(offline, `${scope}js/engine/tectonic_wasm.wasm`, 'same-origin'));
 });

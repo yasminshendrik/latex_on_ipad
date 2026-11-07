@@ -3,8 +3,15 @@ const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './js/app.js'
+  './js/app.js',
+  './js/lint-worker.js',
+  './js/tex-worker.js'
 ];
+
+// Große, selten wechselnde Engine- und PDF.js-Dateien liegen in einem eigenen Cache, der Deployments überdauert.
+// Bei geänderten Paketversionen den Namen erhöhen.
+const ASSET_CACHE = 'latex-assets-v1';
+const LARGE_ASSET = /\/js\/(engine|pdfjs)\//;
 
 function isOAuthCallback(url) {
   const scope = new URL(self.registration.scope);
@@ -45,6 +52,19 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate' && isOAuthCallback(requestUrl)) {
     event.respondWith(caches.match('./index.html').then((cachedIndex) => cachedIndex || fetch(event.request)));
+    return;
+  }
+
+  if (LARGE_ASSET.test(requestUrl.pathname)) {
+    event.respondWith(
+      caches.open(ASSET_CACHE).then(async (cache) => {
+        const cached = await cache.match(event.request);
+        if (cached) return cached;
+        const response = await fetch(event.request);
+        if (response.ok) await cache.put(event.request, response.clone());
+        return response;
+      })
+    );
     return;
   }
 
