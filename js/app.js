@@ -22,6 +22,9 @@
   const repoRetry = document.getElementById('repo-retry');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
+  const logPanel = document.getElementById('log-panel');
+  const appLog = document.getElementById('app-log');
+  const logEntries = [];
   let repoName = localStorage.getItem('gh_current_repo') || '';
   let branchName = localStorage.getItem('gh_current_branch') || 'main';
   let token = sessionStorage.getItem('gh_token') || '';
@@ -37,6 +40,9 @@
   let dbPromise;
   let monacoEditor;
   let saveTimer;
+  let fileLoadRequest;
+  let activeFileButtons = [];
+  let activeFileLoaded = false;
   let suppressEditorChanges = false;
   let saveQueue = Promise.resolve();
 
@@ -44,6 +50,9 @@
   function setStatus(message) {
     const footer = document.querySelector('footer');
     if (footer) footer.textContent = message;
+    logEntries.push(message);
+    if (logEntries.length > 100) logEntries.shift();
+    appLog.textContent = logEntries.join('\n');
   }
   function fileId(repo, branch, path) { return `${repo}\u0000${branch}\u0000${path}`; }
 
@@ -129,9 +138,16 @@
     }, 500);
   }
 
-  textarea.addEventListener('input', scheduleAutoSave);
+  textarea.addEventListener('input', () => {
+    activeFileLoaded = true;
+    scheduleAutoSave();
+  });
   document.getElementById('toggle-sidebar').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
   document.getElementById('toggle-preview').addEventListener('click', () => document.getElementById('preview-container').classList.toggle('visible'));
+  document.getElementById('toggle-log').addEventListener('click', (event) => {
+    logPanel.hidden = !logPanel.hidden;
+    event.currentTarget.setAttribute('aria-expanded', String(!logPanel.hidden));
+  });
   document.getElementById('save-btn').addEventListener('click', () => persistCurrentFile(true).catch((error) => showError(error.message)));
 
   async function loadMonaco() {
@@ -160,7 +176,12 @@
         fontSize: 14,
         scrollBeyondLastLine: false
       });
-      monacoEditor.onDidChangeModelContent(scheduleAutoSave);
+      monacoEditor.onDidChangeModelContent(() => {
+        if (!suppressEditorChanges) {
+          activeFileLoaded = true;
+          scheduleAutoSave();
+        }
+      });
       textarea.style.display = 'none';
       monacoHost.style.display = 'block';
       return true;
@@ -221,6 +242,7 @@
     const root = document.createElement('ul');
     root.className = 'file-tree';
     const directories = new Map([['', root]]);
+    activeFileButtons = [];
     const sorted = items.filter((item) => item.type === 'tree' || item.type === 'blob')
       .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path));
     for (const item of sorted) {
@@ -231,17 +253,86 @@
       if (!parent) throw new Error('GitHub lieferte eine unvollständige Ordnerstruktur.');
       const row = document.createElement('li');
       row.className = 'file-item';
-      const label = document.createElement('span');
-      label.textContent = `${item.type === 'tree' ? '📁' : '📄'} ${name}`;
-      row.appendChild(label);
       if (item.type === 'tree') {
+        const label = document.createElement('span');
+        label.textContent = `📁 ${name}`;
+        row.appendChild(label);
         const children = document.createElement('ul');
         row.appendChild(children);
         directories.set(item.path, children);
+      } else {
+        const extension = name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
+        const editable = extension === 'tex' || extension === 'latex' || extension === 'ltx';
+        const label = document.createElement(editable ? 'button' : 'span');
+        if (editable) {
+          label.type = 'button';
+          label.className = 'file-select-button';
+          label.setAttribute('aria-label', `LaTeX-Datei bearbeiten: ${name}`);
+          label.addEventListener('click', async () => {
+            if (fileLoadRequest) fileLoadRequest.abort();
+            const controller = new AbortController();
+            fileLoadRequest = controller;
+            try {
+              await selectFile(item.path, controller.signal);
+            } catch (error) {
+              if (!controller.signal.aborted) setStatus(`Datei konnte nicht geladen werden: ${error.message}`);
+            } finally {
+              if (fileLoadRequest === controller) fileLoadRequest = undefined;
+            }
+          });
+          activeFileButtons.push({ path: item.path, button: label });
+        } else {
+          label.className = 'file-readonly';
+          label.setAttribute('role', 'img');
+          label.setAttribute('aria-label', `Nicht bearbeitbare Datei: ${name}`);
+        }
+        label.textContent = `${editable ? '✏️' : '🔒'} ${name}`;
+        row.appendChild(label);
       }
       parent.appendChild(row);
     }
     return root;
+  }
+
+  function updateActiveFileButton() {
+    for (const { path, button } of activeFileButtons) {
+      if (path === activePath && activeFileLoaded) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
+    }
+  }
+
+  async function selectFile(path, signal) {
+    if (path === activePath && activeFileLoaded) return;
+    if (activeFileLoaded) {
+      clearTimeout(saveTimer);
+      await persistCurrentFile();
+    }
+    if (signal?.aborted) return;
+    const id = fileId(repoName, branchName, path);
+    let saved;
+    let readError;
+    try { saved = await readRecord('files', id); }
+    catch (error) { readError = error; }
+    const fallback = localStorage.getItem(`latex_ipad_document:${repoName}:${branchName}:${path}`);
+    if (signal?.aborted) return;
+    let content = saved?.content ?? fallback;
+    if (content === null || content === undefined) {
+      if (!token || !navigator.onLine) {
+        if (readError) throw new Error(`Lokaler Inhalt konnte nicht geladen werden: ${readError.message}`);
+        throw new Error('Für diese Datei ist keine lokale Kopie verfügbar. Zum ersten Laden bitte online mit GitHub verbinden.');
+      }
+      const currentToken = token;
+      const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+      const response = await githubApi(`/repos/${repoName.split('/').map(encodeURIComponent).join('/')}/contents/${encodedPath}?ref=${encodeURIComponent(branchName)}`, 'application/vnd.github.raw', signal);
+      content = await response.text();
+      if (token !== currentToken || signal?.aborted) return;
+    }
+    activePath = path;
+    activeFileLoaded = true;
+    setEditorValue(content);
+    updateActiveFileButton();
+    await persistCurrentFile();
+    setStatus(`Datei geladen: ${path}`);
   }
 
   async function loadRepository(nextRepo = repoName, preferredBranch = branchName, signal) {
@@ -282,6 +373,7 @@
           if (token !== currentToken || signal?.aborted) return false;
           activePath = 'main.tex';
           setEditorValue(saved?.content ?? fallback ?? DEFAULT_DOCUMENT);
+          activeFileLoaded = saved?.content !== undefined && saved?.content !== null || fallback !== null;
         } finally {
           textarea.readOnly = false;
           if (monacoEditor) monacoEditor.updateOptions({ readOnly: false });
@@ -298,6 +390,7 @@
       branchSelect.value = nextBranch || '';
       if (treeElement.children.length) fileList.replaceChildren(treeElement);
       else fileList.textContent = 'Keine Ordner oder Dateien zum Anzeigen.';
+      updateActiveFileButton();
       try { await storeRecord('projects', { id: repoName, repo: repoName, branch: branchName, updatedAt: Date.now() }); }
       catch (error) { setStatus(`Repo geladen; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`); return true; }
       setStatus(`Repo geladen: ${repoName}${nextBranch ? ` (${branchName})` : ''}`);
@@ -327,7 +420,15 @@
       for (const repo of repositories) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = repo.full_name;
+        const permission = repo.permissions?.admin === true
+          ? { icon: '⚙️', label: 'Administrationsrechte' }
+          : repo.permissions?.push === true || repo.permissions?.maintain === true
+            ? { icon: '✏️', label: 'Lese- und Schreibzugriff' }
+            : repo.permissions?.pull === true
+              ? { icon: '👁️', label: 'Nur-Lesezugriff' }
+              : { icon: '❔', label: 'Berechtigung unbekannt' };
+        button.textContent = `${permission.icon} ${repo.full_name}`;
+        button.setAttribute('aria-label', `${permission.label}: ${repo.full_name}`);
         button.addEventListener('click', async () => {
           if (repositoryLoading) return;
           const openController = new AbortController();
@@ -448,6 +549,7 @@
       const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => null);
       const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) ?? (!repoName ? localStorage.getItem('latex_ipad_document') : null);
       textarea.value = saved?.content ?? fallback ?? DEFAULT_DOCUMENT;
+      activeFileLoaded = saved?.content !== undefined && saved?.content !== null || fallback !== null;
       await loadMonaco();
       await registerServiceWorker();
       if (repoName) repoLabel.textContent = repoName;
