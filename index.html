@@ -1,68 +1,63 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>LaTeX iPad PWA</title>
-    <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css">
-    <style>
-        * { box-sizing: border-box; }
-        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background: #1e1e1e; color: #d4d4d4; }
-        header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #2d2d2d; border-bottom: 1px solid #444; height: 50px; }
-        .toolbar-group { display: flex; gap: 10px; align-items: center; }
-        button, select { background: #007acc; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
-        select { background: #3c3c3c; }
-        button:active { background: #005999; }
-        #main-container { display: flex; flex: 1; overflow: hidden; position: relative; }
-        #sidebar { width: 250px; background: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; transition: width 0.3s; }
-        #sidebar.collapsed { width: 0; overflow: hidden; border: none; }
-        .file-item { padding: 8px 15px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #2d2d2d; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .file-item:hover { background: #2a2d2e; }
-        .file-item.active { background: #37373d; color: #fff; font-weight: bold; }
-        #editor-container { flex: 1; height: 100%; }
-        #preview-container { width: 40%; background: #fff; color: #000; display: none; border-left: 1px solid #444; padding: 20px; }
-        #preview-container.visible { display: block; }
-        @media (orientation: portrait) {
-            #main-container { flex-direction: column; }
-            #sidebar { width: 100%; height: 140px; }
-            #sidebar.collapsed { height: 0; }
-            #preview-container { width: 100%; height: 40%; border-left: none; border-top: 1px solid #444; }
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1e1e1e">
+  <title>LaTeX iPad PWA</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; flex-direction: column; overflow: hidden; background: #1e1e1e; color: #ddd; font: 15px -apple-system, BlinkMacSystemFont, sans-serif; }
+    header { min-height: 52px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; background: #2d2d2d; border-bottom: 1px solid #444; }
+    .toolbar-group { display: flex; align-items: center; gap: 8px; }
+    button, select { min-height: 36px; border: 0; border-radius: 5px; padding: 7px 12px; background: #007acc; color: #fff; font-size: 14px; cursor: pointer; }
+    select { background: #3c3c3c; }
+    button:active { background: #005999; }
+    #main-container { flex: 1; min-height: 0; display: flex; position: relative; }
+    #sidebar { width: 250px; flex: 0 0 250px; display: flex; flex-direction: column; background: #252526; border-right: 1px solid #444; transition: width .2s, flex-basis .2s; }
+    #sidebar.collapsed { width: 0; flex-basis: 0; overflow: hidden; border: 0; }
+    .sidebar-heading { padding: 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
+    #repo-label { float: right; color: #50b6ff; cursor: pointer; }
+    #file-list { overflow: auto; flex: 1; }
+    .file-item { padding: 9px 12px; cursor: pointer; overflow-wrap: anywhere; border-bottom: 1px solid #303030; }
+    .file-item:hover, .file-item.active { background: #37373d; }
+    #editor-container { flex: 1; min-width: 0; min-height: 0; }
+    #editor { width: 100%; height: 100%; resize: none; padding: 16px; border: 0; outline: 0; background: #1e1e1e; color: #ddd; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
+    #preview-container { display: none; width: 40%; overflow: auto; padding: 16px; color: #222; background: #fff; }
+    #preview-container.visible { display: block; }
+    footer { flex: 0 0 auto; padding: 5px 10px; text-align: right; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
+    @media (orientation: portrait) {
+      header { justify-content: flex-start; }
+      #main-container { flex-direction: column; }
+      #sidebar { width: 100%; height: 145px; flex: 0 0 145px; }
+      #sidebar.collapsed { width: 100%; height: 0; flex-basis: 0; }
+      #preview-container { width: 100%; height: 40%; }
+    }
+  </style>
 </head>
 <body>
-    <header>
-        <div class="toolbar-group">
-            <button id="toggle-sidebar">☰ Sidebar</button>
-            <button id="gh-login-btn">GitHub Login</button>
-            <select id="branch-select" title="GitHub Branch wechseln">
-                <option value="main">main</option>
-            </select>
-        </div>
-        <div class="toolbar-group">
-            <button id="toggle-preview">Vorschau</button>
-            <button id="save-btn">Speichern</button>
-        </div>
-    </header>
-    <div id="main-container">
-        <div id="sidebar">
-            <div style="padding: 10px; font-size: 12px; color: #858585; border-bottom: 1px solid #333; display: flex; justify-content: space-between;">
-                <span>PROJEKT DATEIEN</span>
-                <span id="repo-label" style="color: #007acc; cursor: pointer;" title="Projekt wechseln">Repo wählen</span>
-            </div>
-            <div id="file-list" style="overflow-y: auto; flex: 1;">
-                <div style="padding: 10px; color: #666; font-size: 12px;">Bitte mit GitHub verbinden &amp; Repo wählen...</div>
-            </div>
-        </div>
-        <div id="editor-container"></div>
-        <div id="preview-container">
-            <h3>PDF Vorschau</h3>
-            <p style="color: #666;">Bereit für Azure WASM Build...</p>
-        </div>
+  <header>
+    <div class="toolbar-group">
+      <button id="toggle-sidebar" type="button">☰ Sidebar</button>
+      <button id="gh-login-btn" type="button">GitHub Login</button>
+      <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
     </div>
-    <footer style="padding: 4px 10px; background: #2d2d2d; color: #b7e3ff; font-size: 11px; text-align: right;">TEST DEPLOY: 2026-11-07</footer>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
-    <script src="js/app.js"></script>
+    <div class="toolbar-group">
+      <button id="toggle-preview" type="button">Vorschau</button>
+      <button id="save-btn" type="button">Speichern</button>
+    </div>
+  </header>
+  <main id="main-container">
+    <aside id="sidebar">
+      <div class="sidebar-heading">PROJEKTDATEIEN <span id="repo-label" title="Projekt wechseln">Repo wählen</span></div>
+      <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
+    </aside>
+    <section id="editor-container"><textarea id="editor" aria-label="LaTeX-Editor" spellcheck="false"></textarea></section>
+    <section id="preview-container"><h3>PDF-Vorschau</h3><p>Die PDF-Vorschau ist noch nicht eingerichtet.</p></section>
+  </main>
+  <footer>TEST DEPLOY: Buttons-Fix – 2026-11-07</footer>
+  <script src="js/app.js"></script>
 </body>
 </html>
