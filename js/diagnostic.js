@@ -79,7 +79,7 @@
       const key = Object.keys(headers || {}).find((item) => item.toLowerCase() === name.toLowerCase()); return key ? String(headers[key]) : '';
     } catch (_) { return ''; }
   }
-  function logSafeOAuthRequest(input, init, requestUrl, method) {
+  function logSafeOAuthRequest(init, requestUrl, method) {
     if (requestUrl.hostname !== 'github.com' || requestUrl.pathname !== '/login/oauth/access_token') return;
     let body = null;
     try { if (typeof (init && init.body) === 'string') body = JSON.parse(init.body); } catch (_) { /* Never log the raw body. */ }
@@ -97,6 +97,10 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addPanel, { once: true }); else addPanel();
   window.__technicalLog = log;
   log('Diagnoseprotokoll gestartet.');
+  const buildSha = typeof window.APP_BUILD_SHA === 'string' && /^[0-9a-f]{40}$/i.test(window.APP_BUILD_SHA) ? window.APP_BUILD_SHA : '';
+  log(`Startup-Version: ${buildSha || 'NICHT VERFÜGBAR (Build-SHA fehlt oder Platzhalter nicht ersetzt)'}.`);
+  log(buildSha ? `Erwarteter Service-Worker-Cache: latex-pwa-${buildSha}.` : 'Erwarteter Service-Worker-Cache: nicht bestimmbar.');
+
   try {
     const params = new URLSearchParams(window.location.search);
     if (params.has('code') || params.has('state') || params.has('error')) {
@@ -113,7 +117,7 @@
       let requestUrl; let method;
       try { requestUrl = new URL(typeof input === 'string' ? input : input.url, window.location.href); method = (init && init.method) || (typeof input !== 'string' && input.method) || 'GET'; }
       catch (_) { log('Netzwerkanfrage gestartet (Ziel konnte nicht klassifiziert werden).'); return originalFetch.apply(this, arguments); }
-      logSafeOAuthRequest(input, init, requestUrl, method);
+      logSafeOAuthRequest(init, requestUrl, method);
       let label = 'externe Anfrage';
       if (requestUrl.hostname === 'github.com' && requestUrl.pathname === '/login/oauth/access_token') label = 'GitHub OAuth Token-Endpunkt';
       else if (requestUrl.hostname === 'github.com' && requestUrl.pathname === '/login/device/code') label = 'GitHub Device-Code-Endpunkt';
@@ -138,7 +142,6 @@
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', observeAppError, { once: true }); else observeAppError();
 
-  // Load the experimental device-flow handler before a user can press Login.
   const deviceFlowScript = document.createElement('script');
   deviceFlowScript.src = new URL('device-flow.js', document.currentScript.src).href;
   deviceFlowScript.async = true;
