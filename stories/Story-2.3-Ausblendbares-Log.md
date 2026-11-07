@@ -10,4 +10,4 @@ Das Log am unteren Rand der App soll ein- und ausgeblendet werden können. Beim 
 - [x] Log-Bereich über eine UI-Steuerung ein- und ausblendbar machen. **Umgesetzt**
 - [x] Log-Bereich beim Start standardmäßig ausgeblendet darstellen. **Umgesetzt**
 
-Das Log enthält die zuletzt ausgegebenen Statusmeldungen der App und ist über die Schaltfläche „Log“ erreichbar.
+Die Schaltfläche „Log“ blendet das vorhandene technische Diagnoseprotokoll mit den Funktionen „Leeren“ und „Alles kopieren“ ein und aus. Es ist beim Start verborgen. Die zusätzliche Status-Log-Ansicht wurde nicht eingeführt.

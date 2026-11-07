@@ -22,9 +22,6 @@
   const repoRetry = document.getElementById('repo-retry');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
-  const logPanel = document.getElementById('log-panel');
-  const appLog = document.getElementById('app-log');
-  const logEntries = [];
   let repoName = localStorage.getItem('gh_current_repo') || '';
   let branchName = localStorage.getItem('gh_current_branch') || 'main';
   let token = sessionStorage.getItem('gh_token') || '';
@@ -50,9 +47,6 @@
   function setStatus(message) {
     const footer = document.querySelector('footer');
     if (footer) footer.textContent = message;
-    logEntries.push(message);
-    if (logEntries.length > 100) logEntries.shift();
-    appLog.textContent = logEntries.join('\n');
   }
   function fileId(repo, branch, path) { return `${repo}\u0000${branch}\u0000${path}`; }
 
@@ -144,10 +138,6 @@
   });
   document.getElementById('toggle-sidebar').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
   document.getElementById('toggle-preview').addEventListener('click', () => document.getElementById('preview-container').classList.toggle('visible'));
-  document.getElementById('toggle-log').addEventListener('click', (event) => {
-    logPanel.hidden = !logPanel.hidden;
-    event.currentTarget.setAttribute('aria-expanded', String(!logPanel.hidden));
-  });
   document.getElementById('save-btn').addEventListener('click', () => persistCurrentFile(true).catch((error) => showError(error.message)));
 
   async function loadMonaco() {

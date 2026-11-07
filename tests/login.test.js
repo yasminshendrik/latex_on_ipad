@@ -9,7 +9,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'toggle-log', 'log-panel', 'app-log', 'save-btn'];
+  'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'save-btn'];
 
 function setup({ initial = {}, localInitial = {}, fetchImpl, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
@@ -241,16 +241,6 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   assert.equal(app.elements.editor.value, 'Anhang lokal');
   assert.equal(chapter.attributes['aria-current'], undefined);
   assert.equal(nested.attributes['aria-current'], 'page');
-});
-
-test('Log bleibt beim Start verborgen und ist per Schaltfläche zugänglich', () => {
-  const app = setup();
-  assert.equal(app.elements['log-panel'].hidden, true);
-  app.elements['toggle-log'].handlers.click({ currentTarget: app.elements['toggle-log'] });
-  assert.equal(app.elements['log-panel'].hidden, false);
-  assert.equal(app.elements['toggle-log'].attributes['aria-expanded'], 'true');
-  app.elements['toggle-log'].handlers.click({ currentTarget: app.elements['toggle-log'] });
-  assert.equal(app.elements['log-panel'].hidden, true);
 });
 
 test('Listenfehler, leere Liste und unsichere Paginierung werden sichtbar behandelt', async () => {

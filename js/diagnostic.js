@@ -30,7 +30,7 @@
   function clearEntries() {
     entries.length = 0;
     try { sessionStorage.removeItem(STORAGE_KEY); } catch (_) { /* Storage unavailable. */ }
-    render(); setMessage('Protokoll geleert.');
+    render(); setMessage('');
   }
   async function copyAll() {
     const text = entries.join('\n');
@@ -51,6 +51,7 @@
     const style = document.createElement('style');
     style.textContent = `
       #technical-log { flex: 0 0 150px; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid #666; background: #151515; color: #d8d8d8; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      #technical-log[hidden] { display: none; }
       #technical-log-heading { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; color: #9cdcfe; background: #252526; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
       #technical-log-title { flex: 1 1 180px; }
       #technical-log button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
@@ -62,6 +63,7 @@
     `;
     document.head.appendChild(style);
     panel = document.createElement('section'); panel.id = 'technical-log'; panel.setAttribute('aria-label', 'Technisches Diagnoseprotokoll');
+    panel.hidden = true;
     const heading = document.createElement('div'); heading.id = 'technical-log-heading';
     const title = document.createElement('span'); title.id = 'technical-log-title'; title.textContent = 'Technisches Protokoll (letzte Ereignisse; keine Tokens)';
     const clearButton = document.createElement('button'); clearButton.type = 'button'; clearButton.textContent = 'Leeren'; clearButton.setAttribute('aria-label', 'Aktuelles Protokoll leeren'); clearButton.addEventListener('click', clearEntries);
@@ -70,6 +72,13 @@
     heading.append(title, clearButton, copyButton, messageNode);
     list = document.createElement('div'); list.id = 'technical-log-entries'; list.setAttribute('aria-live', 'polite');
     panel.append(heading, list);
+    const toggleButton = document.getElementById('toggle-log');
+    if (toggleButton) {
+      toggleButton.addEventListener('click', () => {
+        panel.hidden = !panel.hidden;
+        toggleButton.setAttribute('aria-expanded', String(!panel.hidden));
+      });
+    }
     const footer = document.querySelector('footer'); document.body.insertBefore(panel, footer || null); render();
   }
   loadEntries();
