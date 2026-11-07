@@ -6,7 +6,7 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 
 | Story | Thema | Status | Hinweise |
 |---|---|---|---|
-| 0 | Multi-Projekt-Dashboard & Startbildschirm | Teilweise umgesetzt | Repo-Auswahl nach Login; Dashboard und Repo-Erstellung fehlen; Metadaten werden in IndexedDB gespeichert |
+| [0](Story-0-Multi-Projekt-Dashboard.md) | Lokale Projektübersicht & GitHub-Repository-Zugriff | Teilweise umgesetzt | Online-Repo-Auswahl vorhanden; lokale Projektübersicht als Startbildschirm und Repo-Erstellung fehlen |
 | [0.4](Story-0.4-Repository-Auswahl-und-Baumansicht.md) | Repository-Auswahl und reine Baumansicht | Im Code umgesetzt | Auswahl nach Login und nicht-interaktive Ordner- und Dateiliste |
 | [1 & 1.1](Story-1-GitHub-Auth-und-Sync.md) | GitHub Auth & Sync | Teilweise umgesetzt | Früherer OAuth-Login: won't do; durch PAT-Login ersetzt. Baumstruktur abrufbar, Dateiauswahl vorerst ersetzt; Commit/Push fehlt |
 | 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln; Branch-Erstellung fehlt |
