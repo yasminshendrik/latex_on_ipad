@@ -11,7 +11,7 @@ Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschri
 | [1 & 1.1](Story-1-GitHub-Auth-und-Sync.md) | GitHub Auth & Sync | Teilweise umgesetzt | Früherer OAuth-Login: won't do; durch PAT-Login ersetzt. Baumstruktur abrufbar, Dateiauswahl vorerst ersetzt; Commit/Push fehlt |
 | 1.4 | Branching & Switching | Teilweise umgesetzt | Branches laden und wechseln; Branch-Erstellung fehlt |
 | [1.5](Story-1.5-Azure-Static-Web-Apps-Idee.md) | Azure Static Web Apps als spätere Architekturidee | Backlog-Idee | Hosting der PWA und Token-Austausch über Azure Function prüfen; Backend-Abweichung noch nicht beschlossen |
-| [1.6](Story-1.6-Fine-grained-PAT-Login.md) | Fine-grained PAT-Login | Teilweise umgesetzt | Token-Eingabe ohne Benutzername und Prüfung im Code; Apple Passwörter und GitHub-Login noch nicht Ende-zu-Ende verifiziert |
+| [1.6](Story-1.6-Fine-grained-PAT-Login.md) | Fine-grained PAT-Login | Teilweise umgesetzt | Login funktioniert weitgehend; Apple-Passwörter-Eintrag wird trotz Seitenverknüpfung nicht automatisch gefunden; Ende-zu-Ende-Test offen |
 | [1.7](Story-1.7-Repository-Zugriffsrechte.md) | Repository-Zugriffsrechte kennzeichnen | Ausstehend | Symbole für Nur-Lesen-, Schreib- und Administrationsrechte sowie unbekannte Berechtigungen |
 | 2 | VFS & Monaco Editor | Historisch umgesetzt | IndexedDB-VFS, Editor und Auto-Save vorhanden; interaktive Dateiauswahl vorerst durch Story 0.4 ersetzt |
 | 2.1 | Responsive UI & Sidebar | Umgesetzt | Responsives Layout und Sidebar-Toggle vorhanden |
