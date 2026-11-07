@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
             return caches.match('./index.html').then((cachedIndex) => cachedIndex || Response.error());
           }
           return caches.match('./manifest.json').then((cachedManifest) => cachedManifest || Response.error());
-        })
+        });
     })
   );
 });
