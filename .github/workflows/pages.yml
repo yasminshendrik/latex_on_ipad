@@ -25,13 +25,21 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Prepare site and stamp service worker with this commit SHA
+      - name: Prepare site and stamp service worker and build info with this commit SHA
         run: |
           mkdir -p _site
           cp -R index.html manifest.json sw.js js _site/
-          sed -i "s/__COMMIT_SHA__/${GITHUB_SHA}/g" _site/sw.js
-          if grep -q '__COMMIT_SHA__' _site/sw.js; then
-            echo 'Service worker commit SHA placeholder was not replaced.' >&2
+          sed -i "s/__COMMIT_SHA__/${GITHUB_SHA}/g" _site/sw.js _site/js/build-info.js
+          if grep -R -q '__COMMIT_SHA__' _site/sw.js _site/js/build-info.js; then
+            echo 'A commit SHA placeholder was not replaced in the deployed artifacts.' >&2
+            exit 1
+          fi
+          if ! grep -q "window.APP_BUILD_SHA = '${GITHUB_SHA}';" _site/js/build-info.js; then
+            echo 'Build info does not contain the triggering commit SHA.' >&2
+            exit 1
+          fi
+          if ! grep -q "latex-pwa-${GITHUB_SHA}" _site/sw.js; then
+            echo 'Service worker cache name does not contain the triggering commit SHA.' >&2
             exit 1
           fi
 
