@@ -10,7 +10,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'repo-create', 'branch-select', 'file-list', 'sidebar', 'toggle-sidebar', 'toggle-preview', 'save-btn',
+  'repo-create', 'branch-select', 'file-list', 'sidebar', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
@@ -54,6 +54,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
     };
   }
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
+  elements['tex-only-filter'].checked = true;
+  elements['toggle-sidebar'].disabled = true;
   const dialog = elements['github-login-dialog'];
   dialog.showModal = () => { dialog.open = true; };
   dialog.close = () => { dialog.open = false; dialog.handlers.close(); };
@@ -271,7 +273,7 @@ test('Alter OAuth-Token und Rücksprungdaten werden entfernt', () => {
   assert.equal(app.replacement, '/app/?keep=yes#section');
 });
 
-test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum mit nicht-interaktiven Ordnern', async () => {
+test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum mit klappbaren Ordnern', async () => {
   const app = setup({ fetchImpl: async (url) => {
     if (url.endsWith('/user')) return response({});
     if (url.includes('/user/repos') && !url.includes('page=2')) {
@@ -302,6 +304,12 @@ test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum 
   assert.match(file.children[0].textContent, /test\.tex/);
   assert.equal(folder.handlers.click, undefined);
   assert.equal(nested.handlers.click, undefined);
+  assert.equal(folder.children[0].attributes['aria-expanded'], 'true');
+  folder.children[0].handlers.click();
+  assert.equal(folder.children[1].hidden, true);
+  assert.equal(folder.children[0].attributes['aria-expanded'], 'false');
+  folder.children[0].handlers.click();
+  assert.equal(folder.children[1].hidden, false);
   assert.equal(typeof file.children[0].handlers.click, 'function');
 });
 
@@ -327,6 +335,37 @@ test('Repository-Zugriffsrechte erhalten ein korrektes und zugängliches Symbol'
   assert.equal(buttons[3].attributes['aria-label'], 'Berechtigung unbekannt: alice/unknown');
 });
 
+test('TeX-Filter zeigt nur bearbeitbare TeX-Dateien samt übergeordneten Ordnern und ist umschaltbar', async () => {
+  const app = setup({ fetchImpl: async (url) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos')) return response([{ full_name: 'alice/filter', default_branch: 'main' }]);
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree: [
+      { type: 'blob', path: 'main.tex' }, { type: 'tree', path: 'kapitel' },
+      { type: 'blob', path: 'kapitel/eins.LATEX' }, { type: 'blob', path: 'kapitel/link.tex', mode: '120000' },
+      { type: 'tree', path: 'bilder' }, { type: 'blob', path: 'bilder/grafik.png' }
+    ] });
+    if (url.includes('/contents/')) return { ok: true, text: async () => 'Inhalt' };
+    throw new Error('Unerwartete Anfrage');
+  } });
+  assert.match(html, /id="tex-only-filter"[^>]*checked/);
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
+  let root = app.elements['file-list'].children[0];
+  assert.equal(root.children.length, 2);
+  let folder = root.children.find((row) => row.children[0].textContent.includes('kapitel'));
+  assert.equal(folder.children[1].children.length, 1);
+  assert.match(folder.children[1].children[0].children[0].textContent, /eins\.LATEX/);
+  folder.children[0].handlers.click();
+  app.elements['tex-only-filter'].checked = false;
+  app.elements['tex-only-filter'].handlers.change();
+  root = app.elements['file-list'].children[0];
+  folder = root.children.find((row) => row.children[0].textContent.includes('kapitel'));
+  assert.equal(folder.children[1].hidden, true);
+  assert.equal(folder.children[1].children.length, 2);
+  assert.ok(root.children.some((row) => row.children[0].textContent.includes('bilder')));
+});
+
 test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen Offline-Cache', async () => {
   const app = setup({
     localInitial: { gh_current_repo: 'alice/project', gh_current_branch: 'main' },
@@ -350,28 +389,33 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   app.context.navigator.onLine = true;
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
-  const root = app.elements['file-list'].children[0];
+  let root = app.elements['file-list'].children[0];
   const chapter = root.children[0].children[0];
   const main = root.children[1].children[0];
-  const bibliography = root.children[2].children[0];
   assert.equal(chapter.tagName, 'BUTTON');
   assert.equal(chapter.attributes['aria-label'], 'LaTeX-Datei bearbeiten: chapter.tex');
+  assert.equal(root.children.length, 3);
+  app.elements['tex-only-filter'].checked = false;
+  app.elements['tex-only-filter'].handlers.change();
+  root = app.elements['file-list'].children[0];
+  const bibliography = root.children[2].children[0];
   assert.equal(bibliography.tagName, 'SPAN');
   assert.equal(bibliography.attributes['aria-label'], 'Nicht bearbeitbare Datei: refs.bib');
   assert.equal(chapter.attributes['aria-current'], undefined);
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:refs.bib'), 'Inhalt von https://api.github.com/repos/alice/project/contents/refs.bib?ref=main');
-  await main.handlers.click();
+  await root.children[1].children[0].handlers.click();
   assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
-  await chapter.handlers.click();
+  const visibleChapter = root.children[0].children[0];
+  await visibleChapter.handlers.click();
   assert.equal(app.elements.editor.value, '\\chapter{Geladen}');
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:chapter.tex'), '\\chapter{Geladen}');
-  assert.equal(chapter.attributes['aria-current'], 'page');
+  assert.equal(visibleChapter.attributes['aria-current'], 'page');
   app.localValues.set('latex_ipad_document:alice/project:main:subdir/appendix.ltx', 'Anhang lokal');
   app.context.navigator.onLine = false;
   const nested = root.children[3].children[1].children[0].children[0];
   await nested.handlers.click();
   assert.equal(app.elements.editor.value, 'Anhang lokal');
-  assert.equal(chapter.attributes['aria-current'], undefined);
+  assert.equal(visibleChapter.attributes['aria-current'], undefined);
   assert.equal(nested.attributes['aria-current'], 'page');
 });
 
@@ -399,6 +443,8 @@ test('Repository-Öffnen lädt alle regulären Dateien und meldet Git-LFS sowie 
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:data.bin'), undefined);
   assert.match(app.footer.textContent, /Git LFS/);
   assert.match(app.footer.textContent, /Git-Submodule/);
+  app.elements['tex-only-filter'].checked = false;
+  app.elements['tex-only-filter'].handlers.change();
   const vendor = app.elements['file-list'].children[0].children.find((row) => row.children[0].textContent.includes('vendor'));
   const submodule = vendor.children[1].children[0].children[0];
   assert.match(submodule.attributes['aria-label'], /Git-Submodule nicht unterstützt/);
@@ -692,7 +738,7 @@ test('Ein leeres Repository wird ohne Baumabfrage geöffnet', async () => {
   } });
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
-  assert.match(app.elements['file-list'].textContent, /Keine Ordner oder Dateien/);
+  assert.match(app.elements['file-list'].textContent, /Keine TeX-Dateien/);
   assert.equal(app.elements['repo-label'].textContent, 'alice/empty');
 });
 
@@ -742,10 +788,14 @@ test('Remote-Projekt erscheint nach dem Öffnen lokal und lässt sich mit Indexe
     }
   });
 
+  assert.equal(app.elements['toggle-sidebar'].disabled, true);
+  app.elements['toggle-sidebar'].handlers.click();
+  assert.equal(app.elements.sidebar.classList.contains('collapsed'), false);
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
 
   assert.equal(app.elements['main-container'].hidden, false);
+  assert.equal(app.elements['toggle-sidebar'].disabled, false);
   assert.equal(app.elements.dashboard.hidden, true);
   assert.equal(app.elements.sidebar.classList.contains('collapsed'), false);
   await app.elements['toggle-sidebar'].handlers.click();
@@ -755,6 +805,7 @@ test('Remote-Projekt erscheint nach dem Öffnen lokal und lässt sich mit Indexe
   assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
 
   await app.elements['open-dashboard'].handlers.click();
+  assert.equal(app.elements['toggle-sidebar'].disabled, true);
   assert.equal(app.elements.dashboard.hidden, false);
   assert.equal(app.elements['local-project-list'].children.length, 1);
   assert.match(app.elements['local-project-list'].children[0].children[0].children[0].textContent, /alice\/offline-ready/);

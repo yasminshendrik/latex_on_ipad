@@ -11,6 +11,10 @@
   const logActivity = (message) => {
     if (typeof window.__technicalLog === 'function') window.__technicalLog(message);
   };
+  const sidebarToggle = document.getElementById('toggle-sidebar');
+  const texOnlyFilter = document.getElementById('tex-only-filter');
+  let sidebarItems = [];
+  const collapsedFolders = new Set();
   const SCRIPT_URL = document.currentScript?.src || new URL('./js/app.js', location.href).href;
 
   const textarea = document.getElementById('editor');
@@ -702,7 +706,14 @@
     scheduleAutoSave();
     scheduleLint();
   });
-  document.getElementById('toggle-sidebar').addEventListener('click', () => document.getElementById('sidebar').classList.toggle('collapsed'));
+  sidebarToggle.addEventListener('click', () => {
+    if (sidebarToggle.disabled) return;
+    document.getElementById('sidebar').classList.toggle('collapsed');
+  });
+  texOnlyFilter.addEventListener('change', () => {
+    renderSidebar();
+    logActivity(`Sidebar-Dateifilter ${texOnlyFilter.checked ? 'aktiviert' : 'deaktiviert'}.`);
+  });
   document.getElementById('toggle-preview').addEventListener('click', () => {
     const container = document.getElementById('preview-container');
     container.classList.toggle('visible');
@@ -951,7 +962,19 @@
     root.className = 'file-tree';
     const directories = new Map([['', root]]);
     activeFileButtons = [];
-    const sorted = items.filter((item) => item.type === 'tree' || item.type === 'blob' || item.type === 'commit')
+    const visibleFiles = items.filter((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
+    const visibleFilePaths = new Set(visibleFiles.map((item) => item.path));
+    const visibleDirectories = new Set();
+    for (const item of visibleFiles) {
+      const parts = item.path.split('/');
+      parts.pop();
+      while (parts.length) {
+        visibleDirectories.add(parts.join('/'));
+        parts.pop();
+      }
+    }
+    const sorted = items.filter((item) => (item.type === 'tree' || item.type === 'blob' || item.type === 'commit') &&
+      (!texOnlyFilter.checked || (item.type === 'tree' ? visibleDirectories.has(item.path) : item.type === 'blob' && item.mode !== '120000' && visibleFilePaths.has(item.path))))
       .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path));
     for (const item of sorted) {
       const parts = item.path.split('/');
@@ -962,10 +985,21 @@
       const row = document.createElement('li');
       row.className = 'file-item';
       if (item.type === 'tree') {
-        const label = document.createElement('span');
+        const label = document.createElement('button');
+        label.type = 'button';
+        label.className = 'folder-toggle';
         label.textContent = `📁 ${name}`;
-        row.appendChild(label);
         const children = document.createElement('ul');
+        children.hidden = collapsedFolders.has(item.path);
+        label.setAttribute('aria-expanded', String(!children.hidden));
+        label.addEventListener('click', () => {
+          children.hidden = !children.hidden;
+          if (children.hidden) collapsedFolders.add(item.path);
+          else collapsedFolders.delete(item.path);
+          label.setAttribute('aria-expanded', String(!children.hidden));
+          logActivity(`Sidebar-Ordner ${children.hidden ? 'zugeklappt' : 'aufgeklappt'}.`);
+        });
+        row.appendChild(label);
         row.appendChild(children);
         directories.set(item.path, children);
       } else {
@@ -1008,6 +1042,26 @@
     return root;
   }
 
+  function renderSidebar() {
+    const tree = renderFileTree(sidebarItems);
+    if (tree.children.length) fileList.replaceChildren(tree);
+    else {
+      activeFileButtons = [];
+      fileList.textContent = texOnlyFilter.checked ? 'Keine TeX-Dateien zum Anzeigen.' : 'Keine Ordner oder Dateien zum Anzeigen.';
+    }
+    updateActiveFileButton();
+  }
+
+  function validateTree(items) {
+    const directories = new Set(['', ...items.filter((item) => item.type === 'tree').map((item) => item.path)]);
+    for (const item of items) {
+      if (!['tree', 'blob', 'commit'].includes(item.type)) continue;
+      const parts = item.path.split('/');
+      parts.pop();
+      if (!directories.has(parts.join('/'))) throw new Error('GitHub lieferte eine unvollständige Ordnerstruktur.');
+    }
+  }
+
   function localTreeItems(paths) {
     const directories = new Set();
     const files = [];
@@ -1029,6 +1083,7 @@
   function showEditor() {
     dashboard.hidden = true;
     document.getElementById('main-container').hidden = false;
+    sidebarToggle.disabled = false;
   }
 
   async function refreshDashboard() {
@@ -1114,9 +1169,9 @@
     repoName = nextRepo;
     branchName = nextBranch;
     activePath = project.activePath && paths.includes(project.activePath) ? project.activePath : paths.includes('main.tex') ? 'main.tex' : paths[0] || 'main.tex';
-    const tree = renderFileTree(localTreeItems(paths));
-    if (tree.children.length) fileList.replaceChildren(tree);
-    else fileList.textContent = 'Für dieses Projekt sind noch keine Dateien lokal gespeichert.';
+    sidebarItems = localTreeItems(paths);
+    collapsedFolders.clear();
+    renderSidebar();
     branchSelect.replaceChildren();
     const option = document.createElement('option');
     option.value = branchName;
@@ -1391,9 +1446,9 @@
       }
       const { files, unsupported, manualConflicts, localOnly } = await downloadRepositoryFiles(nextRepo, nextBranch || preferredBranch || 'main', tree, signal);
       logActivity(`Repository-Download abgeschlossen (${files.length} Dateien, ${unsupported.length} nicht unterstützte Einträge, ${manualConflicts.length} manuelle Konflikte).`);
-      for (const record of files) await storeFile(record);
       tree.push(...localOnly);
-      const treeElement = renderFileTree(tree);
+      validateTree(tree);
+      for (const record of files) await storeFile(record);
       if (token !== currentToken || signal?.aborted) return false;
       const targetBranch = nextBranch || preferredBranch || 'main';
       const sameContext = nextRepo === repoName && targetBranch === branchName;
@@ -1426,9 +1481,9 @@
         const option = document.createElement('option'); option.value = branch.name; option.textContent = branch.name; return option;
       }));
       branchSelect.value = nextBranch || '';
-      if (treeElement.children.length) fileList.replaceChildren(treeElement);
-      else fileList.textContent = 'Keine Ordner oder Dateien zum Anzeigen.';
-      updateActiveFileButton();
+      sidebarItems = tree;
+      if (!sameContext) collapsedFolders.clear();
+      renderSidebar();
       refreshMainFiles();
       try {
         await storeProject({
@@ -1607,7 +1662,6 @@
               showEditor();
             }
           } catch (error) {
-            logActivity(controller.signal.aborted ? 'Repository-Auswahl abgebrochen.' : 'Repository-Auswahl konnte nicht geladen werden.');
             if (!openController.signal.aborted) repoError.textContent = `Repository konnte nicht geöffnet werden: ${error.message}`;
           } finally {
             if (repoOpenRequest === openController) repoOpenRequest = undefined;
@@ -1618,6 +1672,7 @@
       }
       if (!repositories.length) repoError.textContent = 'Keine verfügbaren Repositories gefunden. Bitte Token-Zugriff und Organisationsfreigaben prüfen.';
     } catch (error) {
+      logActivity(controller.signal.aborted ? 'Repository-Auswahl abgebrochen.' : 'Repository-Auswahl konnte nicht geladen werden.');
       if (!controller.signal.aborted) {
         repoCount.textContent = 'Repositories konnten nicht geladen werden.';
         repoError.textContent = error.message;
@@ -1716,6 +1771,7 @@
       }
       document.getElementById('main-container').hidden = true;
       dashboard.hidden = false;
+      sidebarToggle.disabled = true;
       await refreshDashboard();
     } catch (error) {
       setStatus(`Änderungen konnten vor dem Wechsel zur Übersicht nicht gespeichert werden: ${error.message}`);

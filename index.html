@@ -33,6 +33,8 @@
     .file-item { padding: 4px 8px; overflow-wrap: anywhere; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
     .file-select-button[aria-current="page"] { color: #fff; background: #094771; }
+    .folder-toggle { width: 100%; padding: 4px; background: transparent; text-align: left; }
+    .sidebar-filter { display: block; padding: 8px 12px; }
     .file-readonly { padding: 4px; color: #aaa; }
     .file-tree, .file-tree ul { margin: 0; padding-left: 20px; list-style: none; }
     .file-tree { padding-left: 0; }
@@ -85,7 +87,7 @@
 <body>
   <header>
     <div class="toolbar-group">
-      <button id="toggle-sidebar" type="button">☰ Sidebar</button>
+      <button id="toggle-sidebar" type="button" disabled>☰ Sidebar</button>
       <button id="gh-login-btn" type="button">GitHub Login</button>
       <button id="open-dashboard" type="button">Übersicht</button>
       <button id="open-repo-btn" type="button">GitHub-Repo öffnen</button>
@@ -112,6 +114,7 @@
   <main id="main-container" hidden>
     <aside id="sidebar">
       <div class="sidebar-heading">PROJEKTDATEIEN <button id="repo-label" type="button" title="Projekt wechseln">Repo wählen</button></div>
+      <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
     </aside>
     <section id="editor-container">
