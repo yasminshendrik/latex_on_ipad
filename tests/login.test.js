@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const { IDBFactory } = require('fake-indexeddb');
+const { webcrypto, createHash } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -19,10 +20,10 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-
   'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
   'compile-summary', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
 
-function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
+function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, indexedDBInstance, confirmImpl, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
   const requests = [];
-  const indexedDB = withIndexedDB ? new IDBFactory() : undefined;
+  const indexedDB = indexedDBInstance || (withIndexedDB ? new IDBFactory() : undefined);
   const storage = {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
@@ -75,7 +76,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   let replacement;
   const intervals = [];
   const logs = [];
-  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
+  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, confirm: confirmImpl, crypto: webcrypto, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -115,7 +116,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   );
   const testSource = exposeSave
     ? pdfTestSource.replace('  initialize();', `  window.testSave = {
-        persistCurrentFile, readRemoteFile,
+        persistCurrentFile, readRemoteFile, readProjectTexPacks,
         setContext(repo, branch, path) { repoName = repo; branchName = branch; activePath = path; }
       };
   initialize();`)
@@ -549,14 +550,14 @@ test('Ein vorgemerktes Speichern behält Repository, Branch und Pfad bei Kontext
   assert.match(app.footer.textContent, /alt\.tex/);
 });
 
-async function texWorkerSetup(localInitial = {}, pdfjs) {
+async function texWorkerSetup(localInitial = {}, pdfjs, setupOptions = {}) {
   const workers = [];
   class FakeWorker {
     constructor(url) { this.url = url; this.requests = []; workers.push(this); }
     postMessage(data) { this.requests.push(data); }
     terminate() { this.terminated = true; }
   }
-  const app = setup({ WorkerClass: FakeWorker, exposeSave: true, localInitial, pdfjs });
+  const app = setup({ WorkerClass: FakeWorker, exposeSave: true, localInitial, pdfjs, ...setupOptions });
   const tex = () => workers.find((worker) => worker.url === './js/tex-worker.js');
   const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   await tick();
@@ -670,6 +671,128 @@ test('Compiler-Meldungen bleiben im Compiler-Protokoll und das allgemeine Protok
   assert.doesNotMatch(app.context.window.compilerLog, /main\.aux|lstlang0/);
   assert.match(app.context.window.compilerLog, /vertraulich\.tex:1.*VERTRAULICH/);
   assert.match(app.context.window.compilerLog, /Hinweis: Zusätzlicher Hinweis/);
+});
+
+test('TeX-Pakete werden erst nach Zustimmung geprüft und projekt- sowie branchbezogen offline gespeichert', async () => {
+  const archive = new Uint8Array([0x1f, 0x8b, 1, 2, 3]);
+  const integrity = createHash('sha256').update(archive).digest('hex');
+  const prompts = [];
+  const pack = {
+    id: 'koma-script', label: 'KOMA-Script', hash: '3.43-2024.10.24',
+    bytes: archive.length, integrity, license: 'LPPL 1.3c'
+  };
+  const sharedDatabase = new IDBFactory();
+  const first = await texWorkerSetup({}, undefined, {
+    indexedDBInstance: sharedDatabase,
+    confirmImpl: (message) => { prompts.push(message); return true; },
+    fetchImpl: async (url) => {
+      assert.match(String(url), /pack-koma-script-3\.43-2024\.10\.24\.tar\.gz$/);
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength)
+      };
+    }
+  });
+  first.app.elements.editor.value = '\\documentclass{scrbook}';
+  await first.app.elements['save-btn'].handlers.click();
+  await first.tick();
+  const firstCompile = first.tex().requests[0];
+  assert.equal(firstCompile.packages.length, 0);
+  first.tex().onmessage({ data: {
+    id: firstCompile.id, status: 'failed', diagnostics: [], missingFiles: ['scrbook.cls'],
+    missingPacks: [pack], unsupportedFiles: []
+  } });
+  for (let attempt = 0; attempt < 20 && first.tex().requests.length < 2; attempt += 1) await first.tick();
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0], /KOMA-Script.*LPPL 1\.3c/);
+  const secondCompile = first.tex().requests[1];
+  assert.equal(secondCompile.packages[0].id, 'koma-script');
+  assert.deepEqual([...secondCompile.packages[0].archive], [...archive]);
+
+  first.tex().onmessage({ data: { id: secondCompile.id, status: 'spotless', diagnostics: [], missingFiles: [] } });
+  await first.tick();
+  const installed = await first.app.context.window.testSave.readProjectTexPacks({ repo: 'local', branch: 'main' });
+  assert.equal(installed.length, 1);
+  assert.deepEqual([...installed[0].archive], [...archive]);
+  assert.equal((await first.app.context.window.testSave.readProjectTexPacks({ repo: 'local', branch: 'dev' })).length, 0);
+  assert.equal((await first.app.context.window.testSave.readProjectTexPacks({ repo: 'another-project', branch: 'main' })).length, 0);
+
+  const offline = await texWorkerSetup({}, undefined, {
+    indexedDBInstance: sharedDatabase,
+    confirmImpl: () => { throw new Error('Offline installation must not prompt again.'); }
+  });
+  offline.app.context.navigator.onLine = false;
+  offline.app.elements.editor.value = 'Offline-Projekt';
+  await offline.app.elements['save-btn'].handlers.click();
+  await offline.tick();
+  const offlineCompile = offline.tex().requests[0];
+  assert.equal(offlineCompile.packages[0].id, 'koma-script');
+  assert.equal(offline.app.requests.some((request) => String(request.url).includes('/packs/')), false);
+  assert.equal(offline.app.logs.some((entry) => entry.includes('TeX-Paketdownload')), false);
+});
+
+test('Abgelehnte TeX-Paketfreigabe löst keinen Paketabruf aus', async () => {
+  const prompts = [];
+  const app = await texWorkerSetup({}, undefined, {
+    withIndexedDB: true,
+    confirmImpl: (message) => { prompts.push(message); return false; },
+    fetchImpl: async () => { throw new Error('Paketabruf darf nicht erfolgen.'); }
+  });
+  app.app.elements.editor.value = 'Dokument';
+  await app.app.elements['save-btn'].handlers.click();
+  await app.tick();
+  const request = app.tex().requests[0];
+  app.tex().onmessage({ data: {
+    id: request.id, status: 'failed', diagnostics: [], missingFiles: ['scrbook.cls'],
+    missingPacks: [{ id: 'koma-script', label: 'KOMA-Script', hash: '3.43.0', bytes: 100, integrity: 'a'.repeat(64) }]
+  } });
+  await app.tick();
+  assert.equal(prompts.length, 1);
+  assert.equal(app.app.requests.length, 0);
+  assert.match(app.app.context.window.compilerLog, /Download der benötigten TeX-Pakete wurde abgelehnt/);
+});
+
+test('Ohne IndexedDB werden TeX-Pakete weder heruntergeladen noch als offline verfügbar ausgegeben', async () => {
+  const app = await texWorkerSetup({}, undefined, {
+    confirmImpl: () => true,
+    fetchImpl: async () => { throw new Error('Paketabruf darf ohne dauerhaften Speicher nicht erfolgen.'); }
+  });
+  app.app.elements.editor.value = 'Dokument';
+  await app.app.elements['save-btn'].handlers.click();
+  await app.tick();
+  const request = app.tex().requests[0];
+  app.tex().onmessage({ data: {
+    id: request.id, status: 'failed', diagnostics: [], missingFiles: ['scrbook.cls'],
+    missingPacks: [{ id: 'koma-script', label: 'KOMA-Script', hash: '3.43.0', bytes: 100, integrity: 'a'.repeat(64) }]
+  } });
+  await app.tick();
+  assert.equal(app.app.requests.length, 0);
+  assert.match(app.app.context.window.compilerLog, /IndexedDB wird in diesem Browser nicht unterstützt/);
+});
+
+test('TeX-Pakete werden bei beschädigter oder nicht verifizierbarer Antwort nicht gespeichert', async () => {
+  const archive = new Uint8Array([1, 2, 3]);
+  const app = await texWorkerSetup({}, undefined, {
+    withIndexedDB: true,
+    confirmImpl: () => true,
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength)
+    })
+  });
+  app.app.elements.editor.value = 'Dokument';
+  await app.app.elements['save-btn'].handlers.click();
+  await app.tick();
+  const request = app.tex().requests[0];
+  app.tex().onmessage({ data: {
+    id: request.id, status: 'failed', diagnostics: [], missingFiles: ['scrbook.cls'],
+    missingPacks: [{ id: 'koma-script', label: 'KOMA-Script', hash: '3.43.0', bytes: 3, integrity: '0'.repeat(64) }]
+  } });
+  for (let attempt = 0; attempt < 20 && !/Integritätsprüfung/.test(app.app.context.window.compilerLog || ''); attempt += 1) await app.tick();
+  assert.match(app.app.context.window.compilerLog, /Integritätsprüfung des TeX-Pakets ist fehlgeschlagen/);
+  assert.equal((await app.app.context.window.testSave.readProjectTexPacks({ repo: 'local', branch: 'main' })).length, 0);
 });
 
 test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {

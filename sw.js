@@ -8,9 +8,8 @@ const ASSETS = [
   './js/tex-worker.js'
 ];
 
-// Große, selten wechselnde Engine- und PDF.js-Dateien liegen in einem eigenen Cache, der Deployments überdauert.
-// Bei geänderten Paketversionen den Namen erhöhen.
-const ASSET_CACHE = 'latex-assets-v1';
+// Große Engine-, Paket- und PDF.js-Dateien liegen in einem eigenen, versionierten Cache.
+const ASSET_CACHE = 'latex-assets-v2';
 const LARGE_ASSET = /\/js\/(engine|pdfjs)\//;
 
 function isOAuthCallback(url) {
@@ -33,7 +32,10 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
       caches.keys().then((keys) => Promise.all(
-        keys.filter((key) => key.startsWith('latex-pwa-') && key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.filter((key) =>
+          (key.startsWith('latex-pwa-') && key !== CACHE_NAME) ||
+          (key.startsWith('latex-assets-') && key !== ASSET_CACHE)
+        ).map((key) => caches.delete(key))
       )),
       caches.open(CACHE_NAME).then(async (cache) => {
         const requests = await cache.keys();

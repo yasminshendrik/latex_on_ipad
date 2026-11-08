@@ -2,7 +2,7 @@
   'use strict';
 
   const DB_NAME = 'LaTeXPWA_VFS';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const DEFAULT_DOCUMENT = '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}';
   const MONACO_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.52.2/min/vs';
   const PERIODIC_SAVE_MS = 3 * 60 * 1000;
@@ -114,6 +114,7 @@
         const database = request.result;
         if (!database.objectStoreNames.contains('projects')) database.createObjectStore('projects', { keyPath: 'id' });
         if (!database.objectStoreNames.contains('files')) database.createObjectStore('files', { keyPath: 'id' });
+        if (!database.objectStoreNames.contains('texPacks')) database.createObjectStore('texPacks', { keyPath: 'id' });
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error || new Error('IndexedDB konnte nicht geöffnet werden.'));
@@ -173,6 +174,30 @@
       const request = database.transaction(storeName, 'readonly').objectStore(storeName).getAll();
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error || new Error('Lokale Projektdaten konnten nicht geladen werden.'));
+    });
+  }
+
+  async function readProjectTexPacks(context) {
+    return (await readAllRecords('texPacks')).filter((record) =>
+      record.repo === context.repo && record.branch === context.branch
+    );
+  }
+
+  function texPackRecordId(context, packId) {
+    return fileId(context.repo, context.branch, `tex-pack:${packId}`);
+  }
+
+  async function saveProjectTexPack(context, pack, archive) {
+    await storeRecord('texPacks', {
+      id: texPackRecordId(context, pack.id),
+      repo: context.repo,
+      branch: context.branch,
+      packId: pack.id,
+      hash: pack.hash,
+      archive,
+      source: pack.source || '',
+      license: pack.license || '',
+      installedAt: Date.now()
     });
   }
 
@@ -407,8 +432,9 @@
     return (hash >>> 0).toString(16);
   }
 
-  function projectSignature(main, files) {
-    return `${main}|${Object.keys(files).sort().map((path) => `${path}:${files[path].length}:${hashBytes(files[path])}`).join('|')}`;
+  function projectSignature(main, files, texPacks = []) {
+    const packSignature = texPacks.map((pack) => `${pack.packId}:${pack.hash}`).sort().join(',');
+    return `${main}|${packSignature}|${Object.keys(files).sort().map((path) => `${path}:${files[path].length}:${hashBytes(files[path])}`).join('|')}`;
   }
 
   function stopTexWorker(reason) {
@@ -440,7 +466,7 @@
     return worker;
   }
 
-  function runTexWorker(entry, files) {
+  function runTexWorker(entry, files, context, packages) {
     return new Promise((resolve, reject) => {
       let worker;
       try { worker = ensureTexWorker(); } catch (error) { reject(error); return; }
@@ -451,7 +477,13 @@
       }, COMPILE_TIMEOUT_MS);
       pendingCompiles.set(id, { resolve, reject, timer });
       try {
-        worker.postMessage({ id, entry, files });
+        worker.postMessage({
+          id,
+          entry,
+          files,
+          projectKey: contextKey(context),
+          packages: packages.map((pack) => ({ id: pack.packId, hash: pack.hash, archive: pack.archive }))
+        });
       } catch (error) {
         pendingCompiles.delete(id);
         clearTimeout(timer);
@@ -496,6 +528,78 @@
     return [...names];
   }
 
+  function canStoreTexPacks() {
+    return Boolean(window.indexedDB);
+  }
+
+  function askToInstallTexPacks(packs) {
+    const size = packs.reduce((total, pack) => total + pack.bytes, 0);
+    const details = packs.map((pack) => `• ${pack.label} (${(pack.bytes / 1024 / 1024).toFixed(1)} MB${pack.license ? `, ${pack.license}` : ''})`).join('\n');
+    return window.confirm(
+      `Für die Kompilierung fehlen TeX-Pakete. Sollen diese jetzt von der App geladen und nur diesem Projekt und Branch zugeordnet lokal gespeichert werden?\n\n${details}\n\nGesamt: ${(size / 1024 / 1024).toFixed(1)} MB. Der Download erfolgt erst nach deiner Zustimmung.`
+    );
+  }
+
+  async function downloadTexPacks(context, packs, installed) {
+    if (!window.crypto?.subtle) throw new Error('Sichere Prüfung der Paketdateien wird in diesem Browser nicht unterstützt.');
+    const existing = new Map(installed.map((pack) => [pack.packId, pack.hash]));
+    for (const pack of packs) {
+      if (existing.get(pack.id) === pack.hash) continue;
+      if (!/^[a-z0-9-]+$/i.test(pack.id) || !/^[a-z0-9.-]+$/i.test(pack.hash) ||
+        !/^[a-f0-9]{64}$/i.test(pack.integrity) || !Number.isSafeInteger(pack.bytes) ||
+        pack.bytes <= 0 || pack.bytes > 30 * 1024 * 1024) {
+        throw new Error('Das Paketverzeichnis enthält ungültige oder zu große Paketmetadaten.');
+      }
+      const filename = `pack-${pack.id}-${pack.hash}.tar.gz`;
+      const url = new URL(`engine/packs/${filename}`, SCRIPT_URL);
+      const response = await fetch(url.href);
+      if (!response.ok) throw new Error(`TeX-Paket konnte nicht geladen werden (HTTP ${response.status}).`);
+      const archive = new Uint8Array(await response.arrayBuffer());
+      if (archive.byteLength !== pack.bytes) throw new Error('Die Größe des heruntergeladenen TeX-Pakets stimmt nicht.');
+      const digest = new Uint8Array(await window.crypto.subtle.digest('SHA-256', archive));
+      const actualIntegrity = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+      if (actualIntegrity !== pack.integrity.toLowerCase()) throw new Error('Die Integritätsprüfung des TeX-Pakets ist fehlgeschlagen.');
+      await saveProjectTexPack(context, pack, archive);
+      existing.set(pack.id, pack.hash);
+      logActivity(`TeX-Paket lokal für das aktuelle Projekt und den Branch gespeichert (${archive.byteLength} Bytes).`);
+    }
+  }
+
+  async function compileWithTexPacks(context, main, files, installedPacks, storageError) {
+    let packages = installedPacks;
+    let result = await runTexWorker(main, files, context, packages);
+    for (let attempt = 0; attempt < 5 && result.missingPacks?.length; attempt += 1) {
+      if (!isCurrentContext(context)) return result;
+      const alreadyInstalled = new Set(packages.map((pack) => `${pack.packId}:${pack.hash}`));
+      const needed = result.missingPacks.filter((pack) => !alreadyInstalled.has(`${pack.id}:${pack.hash}`));
+      if (!needed.length) break;
+      if (storageError || !canStoreTexPacks()) {
+        result.packageNotice = `TeX-Pakete können diesem Projekt nicht lokal zugeordnet werden: ${storageError?.message || 'IndexedDB ist nicht verfügbar.'}`;
+        break;
+      }
+      if (!navigator.onLine) {
+        result.packageNotice = 'Für diese Kompilierung fehlen TeX-Pakete, die noch nicht offline gespeichert sind. Bitte online gehen und die Pakete nach Aufforderung freigeben.';
+        break;
+      }
+      let accepted = false;
+      try { accepted = askToInstallTexPacks(needed); }
+      catch (error) {
+        result.packageNotice = `Freigabedialog für TeX-Pakete konnte nicht geöffnet werden: ${error.message}`;
+        break;
+      }
+      if (!accepted) {
+        result.packageNotice = 'Der Download der benötigten TeX-Pakete wurde abgelehnt; es wurde nichts nachgeladen.';
+        break;
+      }
+      logActivity(`TeX-Paketdownload nach ausdrücklicher Freigabe gestartet (${needed.length} Pakete).`);
+      await downloadTexPacks(context, needed, packages);
+      packages = await readProjectTexPacks(context);
+      result = await runTexWorker(main, files, context, packages);
+    }
+    result.projectPackages = packages;
+    return result;
+  }
+
   function showCompileDiagnostics(main, result) {
     compileDiagnostics = result.diagnostics || [];
     const errors = compileDiagnostics.filter((item) => item.severity === 'error').length;
@@ -512,6 +616,13 @@
     if (missing.length) {
       lines.push(`Fehlende Dateien: ${missing.join(', ')}. Prüfen Sie, ob diese Klassen oder Pakete im Projekt oder in der Engine verfügbar sind.`);
     }
+    if (result.missingPacks?.length) {
+      lines.push(`Verfügbare TeX-Pakete: ${result.missingPacks.map((pack) => pack.label).join(', ')}.`);
+    }
+    if (result.unsupportedFiles?.length) {
+      lines.push(`Durch verfügbare Pakete nicht abgedeckt: ${result.unsupportedFiles.join(', ')}.`);
+    }
+    if (result.packageNotice) lines.push(result.packageNotice);
     if (result.status === 'failed' && result.message) lines.push(result.message);
     lines.push(...entries);
     setCompilerLog(lines.join('\n'));
@@ -588,7 +699,15 @@
     const files = {};
     for (const record of records) files[record.path] = record.binary ? record.data : record.content ?? '';
     const key = contextKey(context);
-    const signature = projectSignature(main, files);
+    let installedPacks = [];
+    let packageStorageError;
+    try { installedPacks = await readProjectTexPacks(context); }
+    catch (error) {
+      packageStorageError = error;
+      logActivity('Projektbezogene Offline-TeX-Pakete konnten nicht gelesen werden; die Basiskompilierung wird versucht.');
+    }
+    if (!isCurrentContext(context)) return;
+    let signature = projectSignature(main, files, installedPacks);
     if (compiledSignatures.get(key) === signature && currentPdf && currentPdfContext === key) {
       logActivity('Kompilierung übersprungen: Vorschau ist aktuell.');
       if (reason === 'preview') {
@@ -603,7 +722,7 @@
     logActivity(`Kompilierung gestartet (${records.length} Projektdateien).`);
     let result;
     try {
-      result = await runTexWorker(main, files);
+      result = await compileWithTexPacks(context, main, files, installedPacks, packageStorageError);
     } catch (error) {
       if (!isCurrentContext(context)) {
         logActivity('Kompilierung abgebrochen; das Ergebnis gehört zu einem vorherigen Projektkontext.');
@@ -623,6 +742,9 @@
     }
     const errors = (result.diagnostics || []).filter((item) => item.severity === 'error').length;
     const warnings = (result.diagnostics || []).filter((item) => item.severity === 'warning').length;
+    if (result.packageNotice) logActivity('Zusätzliche TeX-Pakete wurden für diese Kompilierung nicht vollständig bereitgestellt.');
+    installedPacks = result.projectPackages || installedPacks;
+    signature = projectSignature(main, files, installedPacks);
     compiledSignatures.set(key, signature);
     showCompileDiagnostics(main, result);
     logActivity(`Kompilierung ${result.pdf ? 'abgeschlossen' : 'ohne PDF beendet'} (${errors} Fehler, ${warnings} Warnungen). Compiler-Protokoll öffnen.`, { compiler: true });

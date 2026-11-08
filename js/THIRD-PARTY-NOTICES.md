@@ -13,6 +13,13 @@ Diese Komponenten werden nicht vom Projekt selbst entwickelt. Sie werden beim Ve
 - Das ausgelieferte Archiv enthält 1.467 Einträge; bei der Prüfung wurden keine separat benannten Lizenzdateien im Archiv gefunden. Beispielsweise enthalten `article.cls` und `amsmath.sty` LPPL-Vermerke in ihren Dateiköpfen. Andere Dateien, insbesondere Schriften und generierte Binärdateien, können eigene Lizenzen oder an anderer Stelle dokumentierte Lizenzbedingungen haben; nicht alle Lizenzangaben wurden geprüft.
 - Ein vollständiges, geprüftes Lizenz- und Herkunftsinventar für das konkrete Bundle wurde weder im untersuchten Paket noch in den genannten Originalunterlagen gefunden und hier nicht erstellt. Das Archiv wird unverändert aus dem npm-Paket kopiert. Die Recherche ist dokumentiert; sie ist keine rechtliche Bewertung oder Bestätigung, dass sämtliche Weitergabepflichten erfüllt sind.
 
+## KOMA-Script 3.43 (TeX Live, 2024-10-24)
+
+- Herkunft: <https://github.com/deepin-community/texlive-base/tree/3b530356bc4630a7a13bf6f6af00c864f17e9a33/texmf-dist/tex/latex/koma-script>.
+- Lizenz: LPPL 1.3c. Die Quelldistribution enthält die Lizenzdatei `texmf-dist/doc/latex/koma-script/lppl.txt`, die dem ausgelieferten Paketarchiv als `LPPL.txt` beigefügt wird.
+- Das Paket wird beim Asset-Build aus einer festgelegten Revision geladen; alle enthaltenen Laufzeitdateien und die Lizenzdatei werden vor der Archivierung gegen die im `scripts/koma-script-pack.json` festgehaltenen Git-Blob-Prüfsummen geprüft.
+- Die App lädt das Paket erst nach ausdrücklicher Zustimmung und prüft zusätzlich Größe und SHA-256, bevor sie es lokal speichert.
+
 ## PDF.js (pdfjs-dist 6.5.438, Legacy-Build)
 
 - Herkunft: <https://github.com/mozilla/pdf.js>

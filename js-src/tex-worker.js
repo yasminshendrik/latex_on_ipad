@@ -1,9 +1,11 @@
-import { EnginePoisonedError, TexEngine, unpackTarGz } from 'glyphtex-engine';
+import { EnginePoisonedError, TexEngine, parsePackIndex, resolveMissing, unpackTarGz } from 'glyphtex-engine';
 
 const assetUrl = (name) => new URL(`engine/${name}`, self.location.href).href;
 
 let engine;
 let enginePromise;
+let engineKey = '';
+let packIndex;
 let projectFiles = new Set();
 
 async function fetchBytes(name) {
@@ -12,20 +14,35 @@ async function fetchBytes(name) {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-function loadEngine() {
-  if (!enginePromise) {
-    enginePromise = (async () => {
-      const [wasm, bundle] = await Promise.all([fetchBytes('tectonic_wasm.wasm'), fetchBytes('tectonic-bundle.tar.gz')]);
+async function loadEngine(projectKey, projectPackages) {
+  const requested = projectPackages.slice().sort((left, right) => left.id.localeCompare(right.id));
+  const nextKey = `${projectKey}\0${requested.map(({ id, hash }) => `${id}:${hash}`).join('|')}`;
+  if (enginePromise && engineKey === nextKey) return enginePromise;
+  engine = undefined;
+  engineKey = nextKey;
+  enginePromise = (async () => {
+      const [wasm, bundle, indexBytes] = await Promise.all([
+        fetchBytes('tectonic_wasm.wasm'),
+        fetchBytes('tectonic-bundle.tar.gz'),
+        fetchBytes('packs/packs-index.json')
+      ]);
+      packIndex = parsePackIndex(JSON.parse(new TextDecoder().decode(indexBytes)));
+      const available = requested.filter((installed) => packIndex.packs.some((pack) =>
+        pack.id === installed.id && pack.hash === installed.hash
+      ));
       const loaded = await TexEngine.load(wasm);
       loaded.addFiles(await unpackTarGz(bundle));
+      for (const installed of available) loaded.addFiles(await unpackTarGz(installed.archive));
       projectFiles = new Set();
       engine = loaded;
       return loaded;
     })().catch((error) => {
-      enginePromise = undefined;
+      if (engineKey === nextKey) {
+        enginePromise = undefined;
+        engineKey = '';
+      }
       throw error;
     });
-  }
   return enginePromise;
 }
 
@@ -46,7 +63,11 @@ function compileOnce(loaded, { entry, files }) {
 self.onmessage = async ({ data }) => {
   const { id } = data;
   try {
-    let loaded = await loadEngine();
+    const packages = Array.isArray(data.packages) ? data.packages : [];
+    let loaded = await loadEngine(data.projectKey || 'local\0main', packages);
+    const activePackages = packages.filter((installed) => packIndex.packs.some((pack) =>
+      pack.id === installed.id && pack.hash === installed.hash
+    ));
     let outcome;
     try {
       outcome = compileOnce(loaded, data);
@@ -55,10 +76,12 @@ self.onmessage = async ({ data }) => {
       // Nach einem Trap ist die Instanz unbrauchbar und muss neu aufgebaut werden.
       engine = undefined;
       enginePromise = undefined;
-      loaded = await loadEngine();
+      engineKey = '';
+      loaded = await loadEngine(data.projectKey || 'local\0main', packages);
       outcome = compileOnce(loaded, data);
     }
     const { result, pdf } = outcome;
+    const resolution = resolveMissing(packIndex, result.missingFiles || [], activePackages);
     const copy = pdf ? pdf.slice().buffer : undefined;
     self.postMessage({
       id,
@@ -66,6 +89,16 @@ self.onmessage = async ({ data }) => {
       message: result.message,
       diagnostics: result.diagnostics,
       missingFiles: result.missingFiles,
+      missingPacks: resolution.packs.map((pack) => ({
+        id: pack.id,
+        label: pack.label,
+        bytes: pack.bytes,
+        hash: pack.hash,
+        integrity: pack.integrity,
+        license: pack.license,
+        source: pack.source
+      })),
+      unsupportedFiles: resolution.unsupported,
       pdf: copy
     }, copy ? [copy] : []);
   } catch (error) {

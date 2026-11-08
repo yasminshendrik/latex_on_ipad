@@ -31,20 +31,25 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies and run tests
-        run: |
-          npm ci
-          npm test
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Copy TeX engine and PDF.js assets from npm packages
-        run: npm run build:assets
+      - name: Build TeX worker and compiler assets
+        run: |
+          npm run build:tex-worker
+          npm run build:assets
+
+      - name: Run unit and compiler integration tests
+        run: |
+          npm test
+          npm run test:integration
 
       - name: Prepare site and stamp service worker and build info with this commit SHA
         run: |
           mkdir -p _site
           cp -R index.html manifest.json sw.js js _site/
           sed -i "s/__COMMIT_SHA__/${GITHUB_SHA}/g" _site/sw.js _site/js/build-info.js
-          for asset in js/engine/tectonic_wasm.wasm js/engine/tectonic-bundle.tar.gz js/pdfjs/pdf.min.mjs js/pdfjs/pdf.worker.min.mjs js/tex-worker.js js/lint-worker.js js/THIRD-PARTY-NOTICES.md; do
+          for asset in js/engine/tectonic_wasm.wasm js/engine/tectonic-bundle.tar.gz js/engine/packs/pack-koma-script-3.43-2024.10.24.tar.gz js/engine/packs/packs-index.json js/engine/packs/packs-integrity.json js/pdfjs/pdf.min.mjs js/pdfjs/pdf.worker.min.mjs js/tex-worker.js js/lint-worker.js js/THIRD-PARTY-NOTICES.md; do
             if [ ! -s "_site/${asset}" ]; then
               echo "Missing deployed asset: ${asset}" >&2
               exit 1

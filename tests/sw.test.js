@@ -26,7 +26,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
     async put(request, response) { writes.push(request.url); cached.set(request.url, response); }
   };
   const caches = {
-    async keys() { return [currentCache, 'latex-pwa-old', 'unrelated-cache']; },
+    async keys() { return [currentCache, 'latex-pwa-old', 'latex-assets-v1', 'unrelated-cache']; },
     async delete(name) { deletedCaches.push(name); return true; },
     async open() { return cache; },
     async match(request) {
@@ -99,7 +99,7 @@ test('Aktivierung entfernt alte App-Caches und vorhandene OAuth-Einträge', asyn
   assert.equal(worker.cached.has(callback), false);
   assert.equal(worker.cached.has(errorCallback), false);
   assert.equal(worker.cached.has(ordinary), true);
-  assert.deepEqual(worker.deletedCaches, ['latex-pwa-old']);
+  assert.deepEqual(worker.deletedCaches, ['latex-pwa-old', 'latex-assets-v1']);
 });
 
 test('Gewöhnliche Navigation und Assets behalten das bestehende Cache-Verhalten', async () => {
@@ -120,12 +120,16 @@ test('Normale Navigation fällt offline auf die App-Shell zurück', async () => 
 
 test('Große Engine- und PDF.js-Dateien werden beim ersten Abruf gecacht und danach offline geliefert', async () => {
   const online = createWorker();
-  for (const name of ['engine/tectonic_wasm.wasm', 'pdfjs/pdf.min.mjs']) {
+  for (const name of ['engine/tectonic_wasm.wasm', 'engine/packs/pack-koma-script.tar.gz', 'pdfjs/pdf.min.mjs']) {
     const url = `${scope}js/${name}`;
     assert.equal(await dispatchFetch(online, url, 'same-origin'), online.network);
     assert.equal(online.cached.get(url), online.network);
   }
-  const offline = createWorker({ networkFails: true, entries: { [`${scope}js/engine/tectonic-bundle.tar.gz`]: { name: 'bundle' } } });
+  const offline = createWorker({ networkFails: true, entries: {
+    [`${scope}js/engine/tectonic-bundle.tar.gz`]: { name: 'bundle' },
+    [`${scope}js/engine/packs/pack-koma-script.tar.gz`]: { name: 'koma-pack' }
+  } });
   assert.equal((await dispatchFetch(offline, `${scope}js/engine/tectonic-bundle.tar.gz`, 'same-origin')).name, 'bundle');
+  assert.equal((await dispatchFetch(offline, `${scope}js/engine/packs/pack-koma-script.tar.gz`, 'same-origin')).name, 'koma-pack');
   await assert.rejects(dispatchFetch(offline, `${scope}js/engine/tectonic_wasm.wasm`, 'same-origin'));
 });
