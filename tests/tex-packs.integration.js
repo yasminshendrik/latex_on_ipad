@@ -11,6 +11,7 @@ test('Das ausgelieferte KOMA-Script-Paket ermöglicht eine echte scrbook-Kompili
   const enginePath = path.join(root, 'js/engine');
   const packPath = path.join(enginePath, 'packs');
   const index = JSON.parse(fs.readFileSync(path.join(packPath, 'packs-index.json'), 'utf8'));
+  const parsedIndex = parsePackIndex(index);
   for (const pack of index.packs) {
     const bytes = fs.readFileSync(path.join(packPath, `pack-${pack.id}-${pack.hash}.tar.gz`));
     assert.equal(bytes.length, pack.bytes);
@@ -19,7 +20,9 @@ test('Das ausgelieferte KOMA-Script-Paket ermöglicht eine echte scrbook-Kompili
   const koma = index.packs.find((pack) => pack.id === 'koma-script');
   assert.ok(koma, 'KOMA-Script muss im Paketindex stehen.');
   assert.equal(index.provides['scrbook.cls'], 'koma-script');
-  assert.equal(resolveMissing(parsePackIndex(index), ['scrbook.cls'], []).packs[0]?.id, 'koma-script');
+  assert.equal(resolveMissing(parsedIndex, ['scrbook.cls'], []).packs[0]?.id, 'koma-script');
+  const probes = resolveMissing(parsedIndex, ['main.aux', 'footmisc.sty.aux', 'lmroman10-regular.ttf'], []);
+  assert.deepEqual(probes.packs, [], 'Harmlose TeX-Suchproben dürfen keine Paketdownloads auslösen.');
 
   const archive = new Uint8Array(fs.readFileSync(path.join(packPath, `pack-koma-script-${koma.hash}.tar.gz`)));
   assert.equal(archive.byteLength, koma.bytes);
