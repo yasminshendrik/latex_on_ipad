@@ -72,7 +72,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   const location = new URL(locationHref);
   let replacement;
   const intervals = [];
-  const window = { addEventListener() {}, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
+  const logs = [];
+  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -118,7 +119,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   initialize();`)
     : pdfTestSource;
   vm.runInNewContext(testSource, context);
-  return { elements, values, localValues, requests, footer, context, intervals, get replacement() { return replacement; } };
+  return { elements, values, localValues, requests, footer, context, intervals, logs, get replacement() { return replacement; } };
 }
 
 function response(data, { status = 200, link = '' } = {}) {
@@ -579,6 +580,24 @@ test('Fehler des TeX-Workers werden angezeigt und nicht als Vorschau ausgegeben'
   await tick();
   assert.match(app.elements['compile-summary'].textContent, /nicht möglich: tectonic_wasm/);
   assert.match(app.elements['preview-status'].textContent, /Keine Vorschau/);
+});
+
+test('Kompilierung protokolliert Start, Fehler und Erfolg ohne Dokumentinhalte', async () => {
+  const { app, tex, tick } = await texWorkerSetup();
+  app.elements.editor.value = 'VERTRAULICHER-DOKUMENTINHALT';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  tex().onmessage({ data: { id: tex().requests[0].id, error: 'VERTRAULICHER-DOKUMENTINHALT' } });
+  await tick();
+  assert.ok(app.logs.some((entry) => entry.includes('Kompilierung gestartet')));
+  assert.ok(app.logs.some((entry) => entry.includes('Kompilierung abgebrochen')));
+  assert.doesNotMatch(app.logs.join('\n'), /VERTRAULICHER-DOKUMENTINHALT/);
+  app.elements.editor.value = 'Anderer Inhalt';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  tex().onmessage({ data: { id: tex().requests.at(-1).id, status: 'spotless', pdf: new Uint8Array([37, 80]).buffer, diagnostics: [] } });
+  await tick();
+  assert.ok(app.logs.some((entry) => entry.includes('Kompilierung abgeschlossen')));
 });
 
 test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {

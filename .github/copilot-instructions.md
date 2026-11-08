@@ -1,5 +1,9 @@
 # Copilot-Anweisungen für dieses Projekt
 
+## Entwicklung
+
+- Achte bei der Entwicklung auf Sicherheit, Wartbarkeit und Erweiterbarkeit.
+
 ## Anforderungen und Stories
 
 - GitHub Issues sind die verbindliche und alleinige Quelle für Anforderungen, Stories, Bugs, technische Aufgaben, Testlücken und Backlog-Themen.
@@ -11,7 +15,7 @@
 - Änderungen an bereits abgeschlossenen Stories werden als neue Stories dokumentiert; überschreibe oder ändere abgeschlossene Stories nicht so, dass ihre ursprüngliche Historie verloren geht.
 - Teile größere Vorhaben bei Bedarf in klar abgegrenzte GitHub Issues und bilde tatsächliche Abhängigkeiten über Issue-Beziehungen ab.
 - Dokumentiere den Status nur entsprechend der tatsächlich implementierten und verifizierten Änderungen. Nicht oder nur teilweise umgesetzte Arbeit darf nicht als abgeschlossen geschlossen werden.
-- Die vorhandenen Markdown-Dateien in `stories/` und `issues/` bleiben als migrierte Referenz- und Historienkopien erhalten. Sie sind kein aktives Tracking; maßgeblich sind die dort verlinkten GitHub Issues. Keine neuen lokalen Story- oder Issue-Dateien für das Projekttracking anlegen.
+- Die früheren Story-Dateien und die Roadmap sind in der [Git-Historie](https://github.com/yasminshendrik/latex_on_ipad/tree/0a25fc4c60d5ceda907a8e6217f756efeaf33308/stories) einsehbar. Die Dateien in `issues/` bleiben als migrierte Referenzkopien erhalten. Maßgeblich sind GitHub Issues; keine neuen lokalen Story- oder Issue-Dateien für das Projekttracking anlegen.
 
 ## Technisches Protokoll
 

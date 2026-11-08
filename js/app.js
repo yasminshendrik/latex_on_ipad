@@ -8,6 +8,9 @@
   const PERIODIC_SAVE_MS = 3 * 60 * 1000;
   const COMPILE_TIMEOUT_MS = 3 * 60 * 1000;
   const TEX_FILE = /\.(tex|latex|ltx)$/i;
+  const logActivity = (message) => {
+    if (typeof window.__technicalLog === 'function') window.__technicalLog(message);
+  };
   const SCRIPT_URL = document.currentScript?.src || new URL('./js/app.js', location.href).href;
 
   const textarea = document.getElementById('editor');
@@ -405,7 +408,10 @@
   function stopTexWorker(reason) {
     if (texWorker) texWorker.terminate();
     texWorker = undefined;
-    for (const pending of pendingCompiles.values()) pending.reject(new Error(reason));
+    for (const pending of pendingCompiles.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(reason));
+    }
     pendingCompiles.clear();
   }
 
@@ -438,7 +444,13 @@
         if (pendingCompiles.has(id)) stopTexWorker('Die Kompilierung wurde nach Zeitüberschreitung abgebrochen.');
       }, COMPILE_TIMEOUT_MS);
       pendingCompiles.set(id, { resolve, reject, timer });
-      worker.postMessage({ id, entry, files });
+      try {
+        worker.postMessage({ id, entry, files });
+      } catch (error) {
+        pendingCompiles.delete(id);
+        clearTimeout(timer);
+        reject(error);
+      }
     });
   }
 
@@ -542,10 +554,15 @@
   }
 
   async function compileProject(context, reason) {
+    logActivity(`Kompilierung angefordert (${reason === 'preview' ? 'Vorschau' : reason === 'main' ? 'Hauptdatei' : 'Speichern'}).`);
     const records = await readProjectRecords(context);
     const main = updateMainFileOptions(context, records);
-    if (!isCurrentContext(context)) return;
+    if (!isCurrentContext(context)) {
+      logActivity('Kompilierung verworfen: Projektkontext hat sich geändert.');
+      return;
+    }
     if (!main) {
+      logActivity('Kompilierung nicht gestartet: Keine Hauptdatei ausgewählt.');
       compileSummary.textContent = 'Keine Hauptdatei: bitte main.tex anlegen oder eine Hauptdatei wählen.';
       compileResults.replaceChildren();
       compileDiagnostics = [];
@@ -558,6 +575,7 @@
     const key = contextKey(context);
     const signature = projectSignature(main, files);
     if (compiledSignatures.get(key) === signature && currentPdf && currentPdfContext === key) {
+      logActivity('Kompilierung übersprungen: Vorschau ist aktuell.');
       if (reason === 'preview') {
         previewStatus.textContent = `Vorschau von ${main} (aktueller Stand).`;
         await renderPdf(currentPdf);
@@ -566,10 +584,12 @@
     }
     compileSummary.textContent = `Kompilierung von ${main} läuft…`;
     previewStatus.textContent = `Kompilierung von ${main} läuft…`;
+    logActivity(`Kompilierung gestartet (${records.length} Projektdateien).`);
     let result;
     try {
       result = await runTexWorker(main, files);
     } catch (error) {
+      logActivity('Kompilierung abgebrochen: TeX-Worker oder Engine nicht verfügbar; Einzelheiten in der Kompilierungsanzeige.');
       if (!isCurrentContext(context)) return;
       compileSummary.textContent = `Kompilierung nicht möglich: ${error.message}`;
       previewStatus.textContent = currentPdf && currentPdfContext === key
@@ -577,7 +597,13 @@
         : `Keine Vorschau: ${error.message}`;
       return;
     }
-    if (!isCurrentContext(context)) return;
+    if (!isCurrentContext(context)) {
+      logActivity('Kompilierungsergebnis verworfen: Projektkontext hat sich geändert.');
+      return;
+    }
+    const errors = (result.diagnostics || []).filter((item) => item.severity === 'error').length;
+    const warnings = (result.diagnostics || []).filter((item) => item.severity === 'warning').length;
+    logActivity(`Kompilierung ${result.pdf ? 'abgeschlossen' : 'ohne PDF beendet'} (${errors} Fehler, ${warnings} Warnungen).`);
     compiledSignatures.set(key, signature);
     showCompileDiagnostics(main, result);
     compileDiagnosticsKey = key;
@@ -603,7 +629,10 @@
         const next = compileRequest;
         compileRequest = null;
         try { await compileProject(next.context, next.reason); }
-        catch (error) { setStatus(`Kompilierung fehlgeschlagen: ${error.message}`); }
+        catch (error) {
+          logActivity('Kompilierung abgebrochen: Projektdateien oder Vorschau konnten nicht verarbeitet werden.');
+          setStatus(`Kompilierung fehlgeschlagen: ${error.message}`);
+        }
       }
     } finally {
       compileRunning = false;
@@ -1337,6 +1366,7 @@
 
   async function loadRepository(nextRepo = repoName, preferredBranch = branchName, signal) {
     if (!nextRepo || !token || repositoryLoading) return false;
+    logActivity('Repository wird geöffnet: Branches und Dateibaum werden geladen.');
     repositoryLoading = true;
     branchSelect.disabled = true;
     repoLabel.disabled = true;
@@ -1360,6 +1390,7 @@
         await persistCurrentFile();
       }
       const { files, unsupported, manualConflicts, localOnly } = await downloadRepositoryFiles(nextRepo, nextBranch || preferredBranch || 'main', tree, signal);
+      logActivity(`Repository-Download abgeschlossen (${files.length} Dateien, ${unsupported.length} nicht unterstützte Einträge, ${manualConflicts.length} manuelle Konflikte).`);
       for (const record of files) await storeFile(record);
       tree.push(...localOnly);
       const treeElement = renderFileTree(tree);
@@ -1409,7 +1440,10 @@
           updatedAt: Date.now()
         });
       }
-      catch (error) { setStatus(`Repo geladen; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`); return true; }
+      catch (error) {
+        logActivity('Repository geladen; lokale Projektmetadaten konnten nicht gespeichert werden.');
+        setStatus(`Repo geladen; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`); return true;
+      }
       const unsupportedMessage = unsupported.length
         ? ` Nicht offline verfügbar: ${unsupported.join(', ')}.`
         : '';
@@ -1417,7 +1451,11 @@
         ? ` Merge-Konflikt in ${manualConflicts.join(', ')}: Konfliktmarkierungen im Editor manuell bearbeiten.`
         : '';
       setStatus(`Repo geladen und lokal gespeichert: ${repoName}${nextBranch ? ` (${branchName})` : ''}.${unsupportedMessage}${manualMergeMessage}`);
+      logActivity('Repository lokal gespeichert und im Editor geöffnet.');
       return true;
+    } catch (error) {
+      logActivity(signal?.aborted ? 'Repository-Öffnen abgebrochen.' : 'Repository-Öffnen fehlgeschlagen; Einzelheiten in der Oberfläche.');
+      throw error;
     } finally {
       repositoryLoading = false;
       branchSelect.disabled = false;
@@ -1523,8 +1561,9 @@
   });
 
   async function showRepositories() {
-    if (!token) { showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
+    if (!token) { logActivity('Repository-Auswahl nicht gestartet: GitHub-Anmeldung fehlt.'); showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
     if (!navigator.onLine) {
+      logActivity('Repository-Auswahl nicht gestartet: offline.');
       showError('Zum Laden von GitHub-Repositories ist eine Internetverbindung erforderlich. Lokale Projekte bleiben offline verfügbar.');
       return;
     }
@@ -1536,10 +1575,12 @@
     repoError.textContent = '';
     repoList.replaceChildren();
     repoRetry.hidden = true;
+    logActivity('Repository-Auswahl wird geladen.');
     try {
       const repositories = await githubPages('/user/repos?per_page=100&affiliation=owner,collaborator,organization_member&sort=full_name', controller.signal);
       if (controller.signal.aborted) return;
       const countText = repositories.length === 1 ? '1 verfügbares Repository.' : `${repositories.length} verfügbare Repositories.`;
+      logActivity(`Repository-Auswahl geladen (${repositories.length} verfügbar).`);
       repoCount.textContent = countText;
       for (const repo of repositories) {
         const button = document.createElement('button');
@@ -1555,6 +1596,7 @@
         button.setAttribute('aria-label', `${permission.label}: ${repo.full_name}`);
         button.addEventListener('click', async () => {
           if (repositoryLoading) return;
+          logActivity('Repository in der Auswahl angefordert.');
           const openController = new AbortController();
           repoOpenRequest = openController;
           repoError.textContent = '';
@@ -1565,6 +1607,7 @@
               showEditor();
             }
           } catch (error) {
+            logActivity(controller.signal.aborted ? 'Repository-Auswahl abgebrochen.' : 'Repository-Auswahl konnte nicht geladen werden.');
             if (!openController.signal.aborted) repoError.textContent = `Repository konnte nicht geöffnet werden: ${error.message}`;
           } finally {
             if (repoOpenRequest === openController) repoOpenRequest = undefined;
@@ -1589,9 +1632,11 @@
     if (token) {
       if (repoDialog.open) repoDialog.close();
       sessionStorage.removeItem('gh_token'); token = ''; loginButton.textContent = 'GitHub Login'; loginButton.style.background = '';
+      logActivity('GitHub-Abmeldung abgeschlossen.');
       setStatus('Von GitHub abgemeldet.'); return;
     }
     loginError.textContent = '';
+    logActivity('GitHub-Anmeldedialog geöffnet.');
     loginDialog.showModal();
   });
   document.getElementById('github-login-cancel').addEventListener('click', () => loginDialog.close());
@@ -1607,6 +1652,7 @@
     if (loginRequest) return;
     const candidate = tokenInput.value.trim();
     if (!/^github_pat_[A-Za-z0-9_]+$/.test(candidate)) {
+      logActivity('GitHub-Anmeldung abgelehnt: Tokenformat ungültig.');
       loginError.textContent = 'Bitte ein Fine-grained Personal Access Token eingeben, kein GitHub-Passwort.';
       return;
     }
@@ -1614,6 +1660,7 @@
     loginRequest = controller;
     loginSubmit.disabled = true;
     loginError.textContent = '';
+    logActivity('GitHub-Anmeldung wird geprüft.');
     try {
       let response;
       try {
@@ -1630,11 +1677,13 @@
       if (!response.ok) throw new Error(`GitHub konnte das Token nicht prüfen (HTTP ${response.status}). Bitte später erneut versuchen.`);
       sessionStorage.setItem('gh_token', candidate);
       token = candidate;
+      logActivity('GitHub-Anmeldung erfolgreich.');
       loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
       loginDialog.close();
       setStatus('Mit GitHub verbunden.');
       await showRepositories();
     } catch (error) {
+      logActivity(controller.signal.aborted ? 'GitHub-Anmeldung abgebrochen.' : 'GitHub-Anmeldung fehlgeschlagen; Einzelheiten im Anmeldedialog.');
       if (!controller.signal.aborted) loginError.textContent = error.message;
     } finally {
       if (loginRequest === controller) {
