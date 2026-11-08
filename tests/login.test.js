@@ -3,13 +3,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
+const { IDBFactory } = require('fake-indexeddb');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'repo-create', 'branch-select', 'file-list', 'toggle-sidebar', 'toggle-preview', 'save-btn',
+  'repo-create', 'branch-select', 'file-list', 'sidebar', 'toggle-sidebar', 'toggle-preview', 'save-btn',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
@@ -18,9 +19,10 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-
   'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
   'compile-summary', 'compile-results', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
 
-function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
+function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
   const requests = [];
+  const indexedDB = withIndexedDB ? new IDBFactory() : undefined;
   const storage = {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
@@ -28,13 +30,25 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   };
   const localValues = new Map(Object.entries(localInitial));
   function element(tagName = 'DIV') {
+    const classNames = new Set();
     return {
       handlers: {}, children: [], attributes: {}, value: '', textContent: '', style: {}, disabled: false,
       tagName, hidden: true,
+      classList: {
+        add(name) { classNames.add(name); },
+        remove(name) { classNames.delete(name); },
+        contains(name) { return classNames.has(name); },
+        toggle(name) {
+          if (classNames.has(name)) classNames.delete(name);
+          else classNames.add(name);
+          return classNames.has(name);
+        }
+      },
       addEventListener(type, handler) { this.handlers[type] = handler; },
       appendChild(child) { this.children.push(child); },
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
+      getContext() { return {}; },
       setAttribute(name, value) { this.attributes[name] = value; },
       removeAttribute(name) { delete this.attributes[name]; }
     };
@@ -58,7 +72,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   const location = new URL(locationHref);
   let replacement;
   const intervals = [];
-  const window = { addEventListener() {} };
+  const window = { addEventListener() {}, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -80,7 +94,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
       get length() { return localValues.size; },
       key: (index) => [...localValues.keys()][index] ?? null
     },
-    location, URL, AbortController, Worker: WorkerClass,
+    location, URL, AbortController, Worker: WorkerClass, ...(indexedDB ? { indexedDB } : {}),
     setTimeout(callback, delay) { const timer = setTimeout(callback, delay); timer.unref?.(); return timer; },
     clearTimeout,
     setInterval(callback, delay) { intervals.push({ callback, delay }); },
@@ -92,13 +106,17 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
     TextEncoder, TextDecoder, Uint8Array, btoa,
     alert(message) { throw new Error(`Unexpected alert: ${message}`); }
   };
+  const pdfTestSource = source.replace(
+    "import(new URL('./pdfjs/pdf.min.mjs', SCRIPT_URL).href)",
+    'Promise.resolve(window.pdfjsLib)'
+  );
   const testSource = exposeSave
-    ? source.replace('  initialize();', `  window.testSave = {
+    ? pdfTestSource.replace('  initialize();', `  window.testSave = {
         persistCurrentFile, readRemoteFile,
         setContext(repo, branch, path) { repoName = repo; branchName = branch; activePath = path; }
       };
   initialize();`)
-    : source;
+    : pdfTestSource;
   vm.runInNewContext(testSource, context);
   return { elements, values, localValues, requests, footer, context, intervals, get replacement() { return replacement; } };
 }
@@ -484,14 +502,14 @@ test('Ein vorgemerktes Speichern behält Repository, Branch und Pfad bei Kontext
   assert.match(app.footer.textContent, /alt\.tex/);
 });
 
-async function texWorkerSetup(localInitial = {}) {
+async function texWorkerSetup(localInitial = {}, pdfjs) {
   const workers = [];
   class FakeWorker {
     constructor(url) { this.url = url; this.requests = []; workers.push(this); }
     postMessage(data) { this.requests.push(data); }
     terminate() { this.terminated = true; }
   }
-  const app = setup({ WorkerClass: FakeWorker, exposeSave: true, localInitial });
+  const app = setup({ WorkerClass: FakeWorker, exposeSave: true, localInitial, pdfjs });
   const tex = () => workers.find((worker) => worker.url === './js/tex-worker.js');
   const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
   await tick();
@@ -563,6 +581,57 @@ test('Fehler des TeX-Workers werden angezeigt und nicht als Vorschau ausgegeben'
   assert.match(app.elements['preview-status'].textContent, /Keine Vorschau/);
 });
 
+test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {
+  const rendered = [];
+  let destroyed = false;
+  const pdfjs = {
+    GlobalWorkerOptions: {},
+    getDocument(options) {
+      assert.equal(options.isEvalSupported, false);
+      assert.deepEqual([...options.data], [37, 80]);
+      return {
+        promise: Promise.resolve({
+          numPages: 2,
+          async getPage(number) {
+            return {
+              getViewport({ scale }) {
+                return { width: 300 * scale, height: 400 * scale };
+              },
+              render({ canvas, canvasContext, viewport }) {
+                rendered.push({ number, canvas, canvasContext, viewport });
+                return { promise: Promise.resolve() };
+              }
+            };
+          }
+        }),
+        destroy() { destroyed = true; }
+      };
+    }
+  };
+  const { app, tex, tick } = await texWorkerSetup({
+    'latex_ipad_document:local:main:main.tex': '\\documentclass{article}'
+  }, pdfjs);
+
+  await app.elements['toggle-preview'].handlers.click();
+  assert.equal(app.elements['preview-container'].classList.contains('visible'), true);
+  await tick();
+  const request = tex().requests[0];
+  tex().onmessage({ data: {
+    id: request.id, status: 'spotless', pdf: new Uint8Array([37, 80]).buffer, diagnostics: []
+  } });
+  await tick();
+  await tick();
+
+  assert.equal(rendered.length, 2);
+  assert.deepEqual(rendered.map((page) => page.number), [1, 2]);
+  assert.ok(rendered.every((page) => page.canvasContext));
+  assert.deepEqual(app.elements['pdf-pages'].children.map((canvas) => canvas.attributes['aria-label']), ['Seite 1', 'Seite 2']);
+  assert.equal(app.elements['pdf-pages'].children[0].style.width, '596px');
+  assert.match(pdfjs.GlobalWorkerOptions.workerSrc, /pdf\.worker\.min\.mjs$/);
+  assert.equal(destroyed, true);
+  assert.match(app.elements['preview-status'].textContent, /Vorschau von main\.tex/);
+});
+
 test('Binäre Remote-Dateien bleiben byteweise erhalten, Text wird weiterhin dekodiert', async () => {
   const app = setup({ exposeSave: true });
   const { readRemoteFile } = app.context.window.testSave;
@@ -625,6 +694,59 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
   assert.equal(app.elements['main-container'].hidden, false);
   assert.equal(app.elements['dashboard'].hidden, true);
   assert.equal(app.elements.editor.value, 'Lokal gespeicherter Inhalt');
+  assert.match(app.footer.textContent, /Offline-Projekt geöffnet/);
+});
+
+test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
+  assert.match(html, /button, select \{ min-height: 36px;/);
+  assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
+  assert.match(html, /#preview-container \{ display: none; width: 40%;/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ width: 100%; height: 145px;/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#preview-container \{ width: 100%; height: 40%; \}/);
+});
+
+test('Remote-Projekt erscheint nach dem Öffnen lokal und lässt sich mit IndexedDB offline wieder öffnen', async () => {
+  const app = setup({
+    withIndexedDB: true,
+    fetchImpl: async (url) => {
+      if (url.endsWith('/user')) return response({});
+      if (url.includes('/user/repos')) return response([{ full_name: 'alice/offline-ready', default_branch: 'main' }]);
+      if (url.includes('/branches')) return response([{ name: 'main' }]);
+      if (url.includes('/git/trees/')) return response({ truncated: false, tree: [
+        { type: 'blob', path: 'main.tex', sha: 'main-sha', size: 12, mode: '100644' },
+        { type: 'blob', path: 'chapters/intro.tex', sha: 'intro-sha', size: 15, mode: '100644' },
+        { type: 'tree', path: 'chapters' }
+      ] });
+      if (url.includes('/contents/main.tex')) return { ok: true, text: async () => 'Remote-Hauptdatei' };
+      if (url.includes('/contents/chapters/intro.tex')) return { ok: true, text: async () => 'Remote-Einleitung' };
+      throw new Error(`Unerwartete URL: ${url}`);
+    }
+  });
+
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
+
+  assert.equal(app.elements['main-container'].hidden, false);
+  assert.equal(app.elements.dashboard.hidden, true);
+  assert.equal(app.elements.sidebar.classList.contains('collapsed'), false);
+  await app.elements['toggle-sidebar'].handlers.click();
+  assert.equal(app.elements.sidebar.classList.contains('collapsed'), true);
+  await app.elements['toggle-sidebar'].handlers.click();
+  assert.equal(app.elements.sidebar.classList.contains('collapsed'), false);
+  assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
+
+  await app.elements['open-dashboard'].handlers.click();
+  assert.equal(app.elements.dashboard.hidden, false);
+  assert.equal(app.elements['local-project-list'].children.length, 1);
+  assert.match(app.elements['local-project-list'].children[0].children[0].children[0].textContent, /alice\/offline-ready/);
+  assert.match(app.elements['local-project-list'].children[0].children[0].children[1].textContent, /2 lokal gespeicherte Dateien/);
+
+  const requestCount = app.requests.length;
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements['main-container'].hidden, false);
+  assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
+  assert.equal(app.requests.length, requestCount);
   assert.match(app.footer.textContent, /Offline-Projekt geöffnet/);
 });
 

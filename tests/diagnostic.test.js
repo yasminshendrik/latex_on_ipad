@@ -15,6 +15,8 @@ function setup() {
       appendChild(child) { this.children.push(child); },
       insertBefore(child) { this.children.push(child); },
       replaceChildren(...children) { this.children = children; },
+      select() {},
+      remove() {},
       setAttribute(name, value) { this.attributes[name] = value; },
       addEventListener(type, handler) { this.handlers[type] = handler; }
     };
@@ -23,15 +25,23 @@ function setup() {
   const footer = element('footer');
   const panel = {};
   const sessionValues = new Map();
+  const copied = [];
   const document = {
     readyState: 'complete',
-    body: { insertBefore(child) { panel.element = child; } },
+    body: {
+      children: [],
+      appendChild(child) { this.children.push(child); },
+      insertBefore(child) { panel.element = child; }
+    },
     head: { appendChild() {} },
     createElement: element,
     getElementById: (id) => id === 'toggle-log' ? toggle : null,
     querySelector: (selector) => selector === 'footer' ? footer : null,
     addEventListener() {},
-    execCommand() { return true; }
+    execCommand(command) {
+      copied.push({ command, text: document.body.children.at(-1)?.value });
+      return true;
+    }
   };
   const window = { location: { href: 'https://example.test/' } };
   const sessionStorage = {
@@ -42,7 +52,7 @@ function setup() {
   vm.runInNewContext(source, {
     document, window, sessionStorage, navigator: {}, URL, Date, MutationObserver: undefined
   });
-  return { document, toggle, panel: panel.element, sessionValues };
+  return { document, toggle, panel: panel.element, sessionValues, copied };
 }
 
 test('Vorhandenes Diagnoseprotokoll ist standardmäßig verborgen und ein-/ausblendbar', () => {
@@ -67,4 +77,22 @@ test('Protokoll leeren leert den bestehenden Log ohne zusätzliche Leermeldung',
   assert.equal(app.sessionValues.has('latex_pwa_diagnostic_log'), false);
   assert.equal(message.textContent, '');
   assert.doesNotMatch(JSON.stringify(app.panel), /Protokoll geleert/);
+});
+
+test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funktion kopieren', async () => {
+  const app = setup();
+  const heading = app.panel.children[0];
+  const copyButton = heading.children.find((child) => child.textContent === 'Alles kopieren');
+  const message = heading.children.find((child) => child.id === 'technical-log-message');
+
+  await copyButton.handlers.click();
+
+  assert.equal(app.copied[0].command, 'copy');
+  assert.match(app.copied[0].text, /Diagnoseprotokoll gestartet/);
+  assert.equal(message.textContent, 'Protokoll kopiert.');
+
+  const clearButton = heading.children.find((child) => child.textContent === 'Leeren');
+  clearButton.handlers.click();
+  await copyButton.handlers.click();
+  assert.equal(message.textContent, 'Kein Inhalt zum Kopieren.');
 });

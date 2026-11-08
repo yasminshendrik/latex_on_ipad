@@ -12,6 +12,13 @@
 - Bei Änderungen an Code und Anforderungen sind die zugehörigen Story-Dokumente im selben Arbeitszusammenhang aktuell zu halten.
 - Aktualisiere die Story-Übersicht `stories/Alle_User_Stories___Entwicklungs-Roadmap.md` immer gemeinsam mit den betroffenen Einzel-Story-Dateien, insbesondere wenn Anforderungen, Teilschritte oder deren Status geändert werden.
 
+## Lokale Issues und Bugs
+
+- Anforderungen und ihre Umsetzung werden als Stories im Ordner `stories/` gepflegt. Bugs und sonstige nachverfolgbare Issues werden als Markdown-Dateien im Ordner `issues/` gepflegt; pro Issue gibt es eine Datei mit stabiler ID und aussagekräftigem Namen.
+- GitHub Issues sind kein Projekt-Tracking-Medium. Issues und Bugs nicht auf GitHub anlegen oder aktualisieren, sondern die passende lokale Datei erstellen oder fortschreiben und deren Pfad in der Antwort nennen.
+- Issue-Dateien enthalten mindestens Status, Beobachtung, erwartetes Verhalten, Schritte zur Reproduktion, Prüfumgebung und bisherige Nachweise. Nicht reproduzierte oder nicht verifizierte Meldungen als solche kennzeichnen und nicht als bestätigten Bug darstellen.
+- Status und Testergebnisse in der Issue-Datei nach Untersuchung oder Behebung aktualisieren. Änderungen an Produktanforderungen bleiben nutzerseitig vorgegeben und werden zusätzlich in den betroffenen Stories sowie der Roadmap dokumentiert.
+
 ## Technisches Protokoll
 
 - Bei allen künftigen Änderungen müssen die betroffenen App-Aktivitäten einschließlich relevanter Fehler und Abbrüche sinnvoll und nachvollziehbar im vorhandenen technischen Protokoll erscheinen. Berücksichtige dies bei Implementierung und Tests.
