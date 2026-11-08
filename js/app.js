@@ -480,6 +480,31 @@
     compileMarkersSet = markers.length > 0;
   }
 
+  const MISSING_FILE_PATTERN = /File [`'‘]([^'’`]+\.(?:cls|sty|bst|def|clo))['’] not found/;
+
+  function missingPackageFiles(result) {
+    const names = new Set((result.missingFiles || []).filter((name) => typeof name === 'string'));
+    for (const item of result.diagnostics || []) {
+      const match = MISSING_FILE_PATTERN.exec(item.message || '');
+      if (match) names.add(match[1]);
+    }
+    return [...names];
+  }
+
+  function logCompileDiagnostics(result) {
+    const clean = (text, max) => String(text ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
+    const relevant = (result.diagnostics || []).filter((item) => item.severity === 'error' || item.severity === 'warning');
+    for (const item of relevant.slice(0, 5)) {
+      const place = item.file ? ` (${clean(normalizeDiagnosticFile(item.file), 80)}${item.line ? `:${item.line}` : ''})` : '';
+      logActivity(`Kompilierung ${item.severity === 'error' ? 'Fehler' : 'Warnung'}${place}: ${clean(item.message, 120)}`);
+    }
+    if (relevant.length > 5) logActivity(`Kompilierung: ${relevant.length - 5} weitere Meldungen in der Kompilierungsanzeige.`);
+    const missing = missingPackageFiles(result);
+    if (missing.length) {
+      logActivity(`Kompilierung: In der Engine nicht verfügbare Dateien: ${missing.slice(0, 5).map((name) => clean(name, 60)).join(', ')}.`);
+    }
+  }
+
   function showCompileDiagnostics(main, result) {
     compileDiagnostics = result.diagnostics || [];
     const errors = compileDiagnostics.filter((item) => item.severity === 'error').length;
@@ -493,6 +518,12 @@
       return entry;
     });
     const children = [];
+    const missing = missingPackageFiles(result);
+    if (missing.length) {
+      const hint = document.createElement('p');
+      hint.textContent = `Die Engine enthält nicht: ${missing.slice(0, 5).join(', ')}. Diese Klasse bzw. dieses Paket wird derzeit nicht unterstützt; verwenden Sie eine verfügbare Alternative (z. B. die Klasse „book“ statt „scrbook“).`;
+      children.push(hint);
+    }
     if (result.status === 'failed' && result.message) {
       const message = document.createElement('p');
       message.textContent = result.message;
@@ -609,6 +640,7 @@
     const warnings = (result.diagnostics || []).filter((item) => item.severity === 'warning').length;
     logActivity(`Kompilierung ${result.pdf ? 'abgeschlossen' : 'ohne PDF beendet'} (${errors} Fehler, ${warnings} Warnungen).`);
     compiledSignatures.set(key, signature);
+    logCompileDiagnostics(result);
     showCompileDiagnostics(main, result);
     compileDiagnosticsKey = key;
     if (result.pdf) {

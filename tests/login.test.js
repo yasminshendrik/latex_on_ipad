@@ -646,6 +646,25 @@ test('Kompilierung protokolliert Start, Fehler und Erfolg ohne Dokumentinhalte',
   assert.ok(app.logs.some((entry) => entry.includes('Kompilierung abgeschlossen')));
 });
 
+test('Compiler-Meldungen und fehlende Klassen erscheinen im allgemeinen Protokoll samt Hinweis', async () => {
+  const { app, tex, tick } = await texWorkerSetup();
+  app.elements.editor.value = 'x';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  tex().onmessage({ data: {
+    id: tex().requests[0].id,
+    status: 'failed',
+    message: 'XeTeX failed',
+    diagnostics: [{ severity: 'error', file: 'main.tex', line: 1, message: "LaTeX Error: File `scrbook.cls' not found." }],
+    missingFiles: []
+  } });
+  await tick();
+  const log = app.logs.join('\n');
+  assert.match(log, /Kompilierung Fehler \(main\.tex:1\): LaTeX Error: File `scrbook\.cls' not found/);
+  assert.match(log, /nicht verfügbare Dateien: scrbook\.cls/);
+  assert.match(app.elements['compile-results'].children[0].textContent, /scrbook\.cls.*nicht unterstützt/);
+});
+
 test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {
   const rendered = [];
   let destroyed = false;

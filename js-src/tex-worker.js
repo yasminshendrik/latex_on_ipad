@@ -65,6 +65,7 @@ self.onmessage = async ({ data }) => {
       status: result.status,
       message: result.message,
       diagnostics: result.diagnostics,
+      missingFiles: result.missingFiles,
       pdf: copy
     }, copy ? [copy] : []);
   } catch (error) {
