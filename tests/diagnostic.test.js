@@ -44,15 +44,16 @@ function setup() {
     }
   };
   const window = { location: { href: 'https://example.test/' } };
+  const navigator = {};
   const sessionStorage = {
     getItem: (key) => sessionValues.get(key) ?? null,
     setItem: (key, value) => sessionValues.set(key, value),
     removeItem: (key) => sessionValues.delete(key)
   };
   vm.runInNewContext(source, {
-    document, window, sessionStorage, navigator: {}, URL, Date, MutationObserver: undefined
+    document, window, sessionStorage, navigator, URL, Date, MutationObserver: undefined
   });
-  return { document, toggle, panel: panel.element, sessionValues, copied };
+  return { document, window, navigator, toggle, panel: panel.element, sessionValues, copied };
 }
 
 test('Vorhandenes Diagnoseprotokoll ist standardmäßig verborgen und ein-/ausblendbar', () => {
@@ -95,4 +96,75 @@ test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funk
   clearButton.handlers.click();
   await copyButton.handlers.click();
   assert.equal(message.textContent, 'Kein Inhalt zum Kopieren.');
+});
+
+test('Reiter und Fehlerverweis schalten um; Kopieren und Leeren betreffen nur den ausgewählten Reiter', async () => {
+  const app = setup();
+  const heading = app.panel.children[0];
+  const tabs = heading.children.find((child) => child.id === 'technical-log-tabs');
+  const [general, compiler] = tabs.children;
+  const clear = heading.children.find((child) => child.textContent === 'Leeren');
+  const copy = heading.children.find((child) => child.textContent === 'Alles kopieren');
+  const [generalPanel, compilerPanel] = app.panel.children.slice(1);
+
+  app.window.__setCompilerLog('Fehler: vertraulicher Inhalt');
+  app.window.__technicalLog('Kompilierung fehlgeschlagen. Compiler-Protokoll öffnen.', { compiler: true });
+  assert.equal(general.attributes['aria-selected'], 'true');
+  assert.equal(compilerPanel.hidden, true);
+  const link = generalPanel.children.at(-1).children[0];
+  link.handlers.click();
+  assert.equal(compiler.attributes['aria-selected'], 'true');
+  assert.equal(generalPanel.hidden, true);
+  assert.equal(compilerPanel.textContent, 'Fehler: vertraulicher Inhalt');
+  await copy.handlers.click();
+  assert.equal(app.copied.at(-1).text, 'Fehler: vertraulicher Inhalt');
+
+  clear.handlers.click();
+  assert.equal(compilerPanel.textContent, 'Leeres Compiler-Protokoll.');
+  assert.equal(app.sessionValues.has('latex_pwa_diagnostic_log'), true);
+  await copy.handlers.click();
+  assert.equal(heading.children.find((child) => child.id === 'technical-log-message').textContent, 'Kein Inhalt zum Kopieren.');
+
+  app.window.__setCompilerLog('Neuer Compiler-Fehler');
+  general.handlers.click();
+  await copy.handlers.click();
+  assert.match(app.copied.at(-1).text, /Compiler-Protokoll öffnen/);
+  assert.doesNotMatch(app.copied.at(-1).text, /Neuer Compiler-Fehler/);
+  clear.handlers.click();
+  assert.equal(app.sessionValues.has('latex_pwa_diagnostic_log'), false);
+  compiler.handlers.click();
+  assert.equal(compilerPanel.textContent, 'Neuer Compiler-Fehler');
+});
+
+test('Fehler beim Kopieren werden angezeigt und leeres Compiler-Protokoll wird nicht kopiert', async () => {
+  const app = setup();
+  const heading = app.panel.children[0];
+  const compiler = heading.children.find((child) => child.id === 'technical-log-tabs').children[1];
+  const copy = heading.children.find((child) => child.textContent === 'Alles kopieren');
+  const message = heading.children.find((child) => child.id === 'technical-log-message');
+  compiler.handlers.click();
+  await copy.handlers.click();
+  assert.equal(message.textContent, 'Kein Inhalt zum Kopieren.');
+  app.window.__setCompilerLog('Fehler');
+  app.document.execCommand = () => false;
+  await copy.handlers.click();
+  assert.match(message.textContent, /Kopieren fehlgeschlagen/);
+});
+
+test('Clipboard-API kopiert den gewählten Reiter und meldet Berechtigungsfehler', async () => {
+  const app = setup();
+  const heading = app.panel.children[0];
+  const compiler = heading.children.find((child) => child.id === 'technical-log-tabs').children[1];
+  const copy = heading.children.find((child) => child.textContent === 'Alles kopieren');
+  const message = heading.children.find((child) => child.id === 'technical-log-message');
+  const copied = [];
+  app.window.isSecureContext = true;
+  app.window.__setCompilerLog('Compilerinhalt');
+  compiler.handlers.click();
+  app.navigator.clipboard = { writeText: async (text) => { copied.push(text); } };
+  await copy.handlers.click();
+  assert.deepEqual(copied, ['Compilerinhalt']);
+  app.navigator.clipboard.writeText = async () => { throw new Error('Zugriff verweigert'); };
+  await copy.handlers.click();
+  assert.match(message.textContent, /Kopieren fehlgeschlagen: Zugriff verweigert/);
 });

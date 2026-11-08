@@ -8,8 +8,11 @@
   const PERIODIC_SAVE_MS = 3 * 60 * 1000;
   const COMPILE_TIMEOUT_MS = 3 * 60 * 1000;
   const TEX_FILE = /\.(tex|latex|ltx)$/i;
-  const logActivity = (message) => {
-    if (typeof window.__technicalLog === 'function') window.__technicalLog(message);
+  const logActivity = (message, options) => {
+    if (typeof window.__technicalLog === 'function') window.__technicalLog(message, options);
+  };
+  const setCompilerLog = (text) => {
+    if (typeof window.__setCompilerLog === 'function') window.__setCompilerLog(text);
   };
   const sidebarToggle = document.getElementById('toggle-sidebar');
   const texOnlyFilter = document.getElementById('tex-only-filter');
@@ -21,9 +24,6 @@
   const monacoHost = document.getElementById('monaco-editor');
   const lintResults = document.getElementById('lint-results');
   const compileSummary = document.getElementById('compile-summary');
-  const compileResults = document.getElementById('compile-results');
-  const copyCompileButton = document.getElementById('copy-compile-btn');
-  let compileReportLines = [];
   const mainFileSelect = document.getElementById('main-file-select');
   const previewStatus = document.getElementById('preview-status');
   const pdfPages = document.getElementById('pdf-pages');
@@ -388,8 +388,7 @@
       pdfRenderId += 1;
       compileDiagnostics = [];
       compileSummary.textContent = 'Kompilierung noch nicht gelaufen.';
-      compileReportLines = [];
-      compileResults.replaceChildren();
+      setCompilerLog('');
       previewStatus.textContent = 'Noch keine Vorschau.';
       pdfPages.replaceChildren();
       applyCompileMarkers();
@@ -484,28 +483,17 @@
   }
 
   const MISSING_FILE_PATTERN = /File [`'‘]([^'’`]+\.(?:cls|sty|bst|def|clo))['’] not found/;
+  const INSTALLABLE_FILE = /^[^./\\]+\.(?:cls|sty|bst|def|clo)$/i;
 
   function missingPackageFiles(result) {
-    const names = new Set((result.missingFiles || []).filter((name) => typeof name === 'string'));
+    const names = new Set((result.missingFiles || []).filter((name) =>
+      typeof name === 'string' && INSTALLABLE_FILE.test(name) && !/^lst(?:lang|misc)0\.sty$/i.test(name)
+    ));
     for (const item of result.diagnostics || []) {
       const match = MISSING_FILE_PATTERN.exec(item.message || '');
       if (match) names.add(match[1]);
     }
     return [...names];
-  }
-
-  function logCompileDiagnostics(result) {
-    const clean = (text, max) => String(text ?? '').replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, max);
-    const relevant = (result.diagnostics || []).filter((item) => item.severity === 'error' || item.severity === 'warning');
-    for (const item of relevant.slice(0, 5)) {
-      const place = item.file ? ` (${clean(normalizeDiagnosticFile(item.file), 80)}${item.line ? `:${item.line}` : ''})` : '';
-      logActivity(`Kompilierung ${item.severity === 'error' ? 'Fehler' : 'Warnung'}${place}: ${clean(item.message, 120)}`);
-    }
-    if (relevant.length > 5) logActivity(`Kompilierung: ${relevant.length - 5} weitere Meldungen in der Kompilierungsanzeige.`);
-    const missing = missingPackageFiles(result);
-    if (missing.length) {
-      logActivity(`Kompilierung: In der Engine nicht verfügbare Dateien: ${missing.slice(0, 5).map((name) => clean(name, 60)).join(', ')}.`);
-    }
   }
 
   function showCompileDiagnostics(main, result) {
@@ -514,61 +502,21 @@
     const warnings = compileDiagnostics.filter((item) => item.severity === 'warning').length;
     const label = result.status === 'failed' ? 'fehlgeschlagen' : errors ? 'mit Fehlern' : warnings ? 'mit Warnungen' : 'ohne Beanstandung';
     compileSummary.textContent = `Kompilierung von ${main}: ${label} (${errors} Fehler, ${warnings} Warnungen).`;
-    const entries = compileDiagnostics.filter((item) => item.severity !== 'info').slice(0, 50).map((item) => {
-      const entry = document.createElement('li');
+    const entries = compileDiagnostics.map((item) => {
       const place = item.file ? `${normalizeDiagnosticFile(item.file)}${item.line ? `:${item.line}` : ''} – ` : '';
-      entry.textContent = `${item.severity === 'error' ? 'Fehler' : 'Warnung'}: ${place}${item.message}`;
-      return entry;
+      const severity = item.severity === 'error' ? 'Fehler' : item.severity === 'warning' ? 'Warnung' : 'Hinweis';
+      return `${severity}: ${place}${item.message}`;
     });
-    const children = [];
+    const lines = [compileSummary.textContent];
     const missing = missingPackageFiles(result);
     if (missing.length) {
-      const hint = document.createElement('p');
-      hint.textContent = `Die Engine enthält nicht: ${missing.slice(0, 5).join(', ')}. Diese Klasse bzw. dieses Paket wird derzeit nicht unterstützt; verwenden Sie eine verfügbare Alternative (z. B. die Klasse „book“ statt „scrbook“).`;
-      children.push(hint);
+      lines.push(`Fehlende Dateien: ${missing.join(', ')}. Prüfen Sie, ob diese Klassen oder Pakete im Projekt oder in der Engine verfügbar sind.`);
     }
-    if (result.status === 'failed' && result.message) {
-      const message = document.createElement('p');
-      message.textContent = result.message;
-      children.push(message);
-    }
-    if (entries.length) {
-      const list = document.createElement('ul');
-      list.append(...entries);
-      children.push(list);
-    }
-    compileResults.replaceChildren(...children);
-    compileReportLines = [compileSummary.textContent];
-    if (missing.length) compileReportLines.push(children[0].textContent);
-    if (result.status === 'failed' && result.message) compileReportLines.push(result.message);
-    compileReportLines.push(...entries.map((entry) => entry.textContent));
+    if (result.status === 'failed' && result.message) lines.push(result.message);
+    lines.push(...entries);
+    setCompilerLog(lines.join('\n'));
     applyCompileMarkers();
   }
-
-  async function copyCompileReport() {
-    const text = compileReportLines.length ? compileReportLines.join('\n') : compileSummary.textContent;
-    try {
-      if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
-      else {
-        const temporary = document.createElement('textarea');
-        temporary.value = text;
-        temporary.setAttribute('readonly', '');
-        temporary.style.position = 'fixed';
-        temporary.style.opacity = '0';
-        document.body.appendChild(temporary);
-        temporary.select();
-        const copied = document.execCommand('copy');
-        temporary.remove();
-        if (!copied) throw new Error('Kopieren wird nicht unterstützt.');
-      }
-      logActivity('Kompilierungsmeldungen in die Zwischenablage kopiert.');
-      copyCompileButton.title = 'Kopiert';
-    } catch (error) {
-      logActivity('Kopieren der Kompilierungsmeldungen fehlgeschlagen.');
-      copyCompileButton.title = 'Kopieren fehlgeschlagen';
-    }
-  }
-  copyCompileButton.addEventListener('click', copyCompileReport);
 
   function loadPdfjs() {
     pdfjsPromise ||= import(new URL('./pdfjs/pdf.min.mjs', SCRIPT_URL).href).then((library) => {
@@ -629,9 +577,9 @@
       return;
     }
     if (!main) {
-      logActivity('Kompilierung nicht gestartet: Keine Hauptdatei ausgewählt.');
       compileSummary.textContent = 'Keine Hauptdatei: bitte main.tex anlegen oder eine Hauptdatei wählen.';
-      compileResults.replaceChildren();
+      setCompilerLog(compileSummary.textContent);
+      logActivity('Kompilierung nicht gestartet: Keine Hauptdatei ausgewählt. Compiler-Protokoll öffnen.', { compiler: true });
       compileDiagnostics = [];
       applyCompileMarkers();
       previewStatus.textContent = 'Keine Vorschau: Hauptdatei fehlt.';
@@ -650,16 +598,20 @@
       return;
     }
     compileSummary.textContent = `Kompilierung von ${main} läuft…`;
-    compileReportLines = [];
+    setCompilerLog(compileSummary.textContent);
     previewStatus.textContent = `Kompilierung von ${main} läuft…`;
     logActivity(`Kompilierung gestartet (${records.length} Projektdateien).`);
     let result;
     try {
       result = await runTexWorker(main, files);
     } catch (error) {
-      logActivity('Kompilierung abgebrochen: TeX-Worker oder Engine nicht verfügbar; Einzelheiten in der Kompilierungsanzeige.');
-      if (!isCurrentContext(context)) return;
+      if (!isCurrentContext(context)) {
+        logActivity('Kompilierung abgebrochen; das Ergebnis gehört zu einem vorherigen Projektkontext.');
+        return;
+      }
       compileSummary.textContent = `Kompilierung nicht möglich: ${error.message}`;
+      setCompilerLog(compileSummary.textContent);
+      logActivity('Kompilierung abgebrochen. Compiler-Protokoll öffnen.', { compiler: true });
       previewStatus.textContent = currentPdf && currentPdfContext === key
         ? 'Kompilierung nicht möglich; die angezeigte Vorschau ist veraltet.'
         : `Keine Vorschau: ${error.message}`;
@@ -671,10 +623,9 @@
     }
     const errors = (result.diagnostics || []).filter((item) => item.severity === 'error').length;
     const warnings = (result.diagnostics || []).filter((item) => item.severity === 'warning').length;
-    logActivity(`Kompilierung ${result.pdf ? 'abgeschlossen' : 'ohne PDF beendet'} (${errors} Fehler, ${warnings} Warnungen).`);
     compiledSignatures.set(key, signature);
-    logCompileDiagnostics(result);
     showCompileDiagnostics(main, result);
+    logActivity(`Kompilierung ${result.pdf ? 'abgeschlossen' : 'ohne PDF beendet'} (${errors} Fehler, ${warnings} Warnungen). Compiler-Protokoll öffnen.`, { compiler: true });
     compileDiagnosticsKey = key;
     if (result.pdf) {
       currentPdf = new Uint8Array(result.pdf);
@@ -699,7 +650,10 @@
         compileRequest = null;
         try { await compileProject(next.context, next.reason); }
         catch (error) {
-          logActivity('Kompilierung abgebrochen: Projektdateien oder Vorschau konnten nicht verarbeitet werden.');
+          if (isCurrentContext(next.context)) {
+            setCompilerLog(`Kompilierung fehlgeschlagen: ${error.message}`);
+            logActivity('Kompilierung abgebrochen: Projektdateien oder Vorschau konnten nicht verarbeitet werden. Compiler-Protokoll öffnen.', { compiler: true });
+          } else logActivity('Kompilierung abgebrochen: Projektkontext hat sich geändert.');
           setStatus(`Kompilierung fehlgeschlagen: ${error.message}`);
         }
       }

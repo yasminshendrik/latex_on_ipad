@@ -17,7 +17,7 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-
   'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo', 'sync-conflict-dialog',
   'sync-conflict-description', 'sync-conflict-local', 'sync-conflict-remote',
   'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
-  'compile-summary', 'compile-results', 'copy-compile-btn', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
+  'compile-summary', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
 
 function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
@@ -75,7 +75,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   let replacement;
   const intervals = [];
   const logs = [];
-  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
+  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -578,7 +578,7 @@ test('Lokales Speichern startet die Kompilierung; Diagnosen und unveränderte St
   ] } });
   await tick();
   assert.match(app.elements['compile-summary'].textContent, /mit Fehlern \(1 Fehler, 0 Warnungen\)/);
-  assert.match(app.elements['compile-results'].children[0].children[0].textContent, /main\.tex:1 – Undefined control sequence/);
+  assert.match(app.context.window.compilerLog, /main\.tex:1 – Undefined control sequence/);
   await app.elements['save-btn'].handlers.click();
   await tick();
   assert.equal(tex().requests.length, 1);
@@ -625,6 +625,7 @@ test('Fehler des TeX-Workers werden angezeigt und nicht als Vorschau ausgegeben'
   tex().onmessage({ data: { id: tex().requests[0].id, error: 'tectonic_wasm.wasm konnte nicht geladen werden (HTTP 404).' } });
   await tick();
   assert.match(app.elements['compile-summary'].textContent, /nicht möglich: tectonic_wasm/);
+  assert.match(app.context.window.compilerLog, /tectonic_wasm/);
   assert.match(app.elements['preview-status'].textContent, /Keine Vorschau/);
 });
 
@@ -646,7 +647,7 @@ test('Kompilierung protokolliert Start, Fehler und Erfolg ohne Dokumentinhalte',
   assert.ok(app.logs.some((entry) => entry.includes('Kompilierung abgeschlossen')));
 });
 
-test('Compiler-Meldungen und fehlende Klassen erscheinen im allgemeinen Protokoll samt Hinweis', async () => {
+test('Compiler-Meldungen bleiben im Compiler-Protokoll und das allgemeine Protokoll enthält nur den Status', async () => {
   const { app, tex, tick } = await texWorkerSetup();
   app.elements.editor.value = 'x';
   await app.elements['save-btn'].handlers.click();
@@ -655,35 +656,20 @@ test('Compiler-Meldungen und fehlende Klassen erscheinen im allgemeinen Protokol
     id: tex().requests[0].id,
     status: 'failed',
     message: 'XeTeX failed',
-    diagnostics: [{ severity: 'error', file: 'main.tex', line: 1, message: "LaTeX Error: File `scrbook.cls' not found." }],
-    missingFiles: []
+    diagnostics: [
+      { severity: 'error', file: 'vertraulich.tex', line: 1, message: "LaTeX Error: File `scrbook.cls' not found. VERTRAULICH" },
+      { severity: 'info', message: 'Zusätzlicher Hinweis' }
+    ],
+    missingFiles: ['main.aux.clo', 'main.aux', 'lstlang0.sty', 'scrbook.cls']
   } });
   await tick();
   const log = app.logs.join('\n');
-  assert.match(log, /Kompilierung Fehler \(main\.tex:1\): LaTeX Error: File `scrbook\.cls' not found/);
-  assert.match(log, /nicht verfügbare Dateien: scrbook\.cls/);
-  assert.match(app.elements['compile-results'].children[0].textContent, /scrbook\.cls.*nicht unterstützt/);
-});
-
-test('Copy-Button kopiert nur die Kompilierungsmeldungen', async () => {
-  const { app, tex, tick } = await texWorkerSetup();
-  const copied = [];
-  app.context.navigator.clipboard = { writeText: async (text) => { copied.push(text); } };
-  app.context.window.isSecureContext = true;
-  app.elements.editor.value = 'GEHEIMER-INHALT';
-  await app.elements['save-btn'].handlers.click();
-  await tick();
-  tex().onmessage({ data: {
-    id: tex().requests[0].id, status: 'errors',
-    diagnostics: [{ severity: 'error', file: 'main.tex', line: 3, message: 'Undefined control sequence.' }]
-  } });
-  await tick();
-  await app.elements['copy-compile-btn'].handlers.click();
-  assert.equal(copied.length, 1);
-  assert.match(copied[0], /mit Fehlern \(1 Fehler/);
-  assert.match(copied[0], /Fehler: main\.tex:3 – Undefined control sequence\./);
-  assert.doesNotMatch(copied[0], /GEHEIMER-INHALT/);
-  assert.ok(app.logs.some((entry) => entry.includes('in die Zwischenablage kopiert')));
+  assert.match(log, /Compiler-Protokoll öffnen/);
+  assert.doesNotMatch(log, /scrbook|vertraulich|VERTRAULICH/);
+  assert.match(app.context.window.compilerLog, /Fehlende Dateien: scrbook\.cls/);
+  assert.doesNotMatch(app.context.window.compilerLog, /main\.aux|lstlang0/);
+  assert.match(app.context.window.compilerLog, /vertraulich\.tex:1.*VERTRAULICH/);
+  assert.match(app.context.window.compilerLog, /Hinweis: Zusätzlicher Hinweis/);
 });
 
 test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {

@@ -45,8 +45,6 @@
     #lint-results { flex: 0 0 auto; max-height: 20%; overflow: auto; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
     #lint-results ul { margin: 4px 0; padding-left: 20px; }
     #compile-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
-    #compile-results { flex: 0 0 auto; max-height: 20%; overflow: auto; padding: 0 12px 6px; background: #252526; color: #ddd; font-size: 12px; }
-    #compile-results ul { margin: 4px 0; padding-left: 20px; }
     #preview-container { display: none; width: 40%; overflow: auto; padding: 16px; color: #222; background: #fff; }
     #preview-status { margin: 4px 0 12px; color: #444; font-size: 13px; }
     #pdf-pages canvas { display: block; margin: 0 auto 12px; border: 1px solid #ccc; background: #fff; }
@@ -127,9 +125,7 @@
         <label for="main-file-select">Hauptdatei</label>
         <select id="main-file-select"><option value="">main.tex</option></select>
         <span id="compile-summary">Kompilierung noch nicht gelaufen.</span>
-        <button id="copy-compile-btn" type="button" aria-label="Kompilierungsmeldungen kopieren" title="Kompilierungsmeldungen kopieren">📋</button>
       </div>
-      <div id="compile-results" role="status" aria-live="polite"></div>
     </section>
     <section id="preview-container" aria-label="PDF-Vorschau">
       <h3>PDF-Vorschau</h3>
