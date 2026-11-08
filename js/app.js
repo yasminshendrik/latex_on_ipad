@@ -15,6 +15,8 @@
     if (typeof window.__setCompilerLog === 'function') window.__setCompilerLog(text);
   };
   const sidebarToggle = document.getElementById('toggle-sidebar');
+  const sidebar = document.getElementById('sidebar');
+  const sidebarResize = document.getElementById('sidebar-resize');
   const texOnlyFilter = document.getElementById('tex-only-filter');
   let sidebarItems = [];
   const collapsedFolders = new Set();
@@ -849,8 +851,64 @@
   });
   sidebarToggle.addEventListener('click', () => {
     if (sidebarToggle.disabled) return;
-    document.getElementById('sidebar').classList.toggle('collapsed');
+    sidebar.classList.toggle('collapsed');
+    sidebarResize.setAttribute('tabindex', sidebar.classList.contains('collapsed') ? '-1' : '0');
+    logActivity(`Sidebar ${sidebar.classList.contains('collapsed') ? 'zugeklappt' : 'aufgeklappt'}.`);
   });
+  let resizeDrag;
+  const sidebarPortrait = () => window.matchMedia('(orientation: portrait)').matches;
+  function resizeSidebar(size, portrait) {
+    const bounds = document.getElementById('main-container').getBoundingClientRect();
+    const minimum = portrait ? 120 : 180;
+    const maximum = Math.max(minimum, (portrait ? bounds.height : bounds.width) - 120);
+    const value = Math.max(minimum, Math.min(maximum, size));
+    sidebar.style.setProperty(portrait ? '--sidebar-height' : '--sidebar-width', `${value}px`);
+    sidebarResize.setAttribute('aria-valuemin', String(minimum));
+    sidebarResize.setAttribute('aria-valuemax', String(Math.round(maximum)));
+    sidebarResize.setAttribute('aria-valuenow', String(Math.round(value)));
+  }
+  function syncResizeOrientation() {
+    const portrait = sidebarPortrait();
+    sidebarResize.setAttribute('aria-orientation', portrait ? 'horizontal' : 'vertical');
+    const bounds = document.getElementById('main-container').getBoundingClientRect();
+    const minimum = portrait ? 120 : 180;
+    sidebarResize.setAttribute('aria-valuemin', String(minimum));
+    sidebarResize.setAttribute('aria-valuemax', String(Math.round(Math.max(minimum, (portrait ? bounds.height : bounds.width) - 120))));
+    const size = sidebar.getBoundingClientRect();
+    sidebarResize.setAttribute('aria-valuenow', String(Math.round(portrait ? size.height : size.width)));
+  }
+  sidebarResize.addEventListener('pointerdown', (event) => {
+    if (sidebar.classList.contains('collapsed') || event.button !== 0) return;
+    const portrait = sidebarPortrait();
+    const bounds = sidebar.getBoundingClientRect();
+    resizeDrag = { id: event.pointerId, portrait, start: portrait ? event.clientY : event.clientX, size: portrait ? bounds.height : bounds.width };
+    sidebarResize.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  sidebarResize.addEventListener('pointermove', (event) => {
+    if (!resizeDrag || resizeDrag.id !== event.pointerId) return;
+    resizeSidebar(resizeDrag.size + (resizeDrag.portrait ? event.clientY : event.clientX) - resizeDrag.start, resizeDrag.portrait);
+  });
+  function finishSidebarResize(event) {
+    if (!resizeDrag || resizeDrag.id !== event.pointerId) return;
+    resizeDrag = undefined;
+    logActivity('Sidebar-Größe geändert.');
+  }
+  sidebarResize.addEventListener('pointerup', finishSidebarResize);
+  sidebarResize.addEventListener('pointercancel', finishSidebarResize);
+  sidebarResize.addEventListener('lostpointercapture', finishSidebarResize);
+  sidebarResize.addEventListener('keydown', (event) => {
+    const portrait = sidebarPortrait();
+    const increase = portrait ? 'ArrowDown' : 'ArrowRight';
+    const decrease = portrait ? 'ArrowUp' : 'ArrowLeft';
+    if (event.key !== increase && event.key !== decrease) return;
+    event.preventDefault();
+    const bounds = sidebar.getBoundingClientRect();
+    resizeSidebar((portrait ? bounds.height : bounds.width) + (event.key === increase ? 20 : -20), portrait);
+    logActivity('Sidebar-Größe geändert.');
+  });
+  window.addEventListener('resize', syncResizeOrientation);
+  syncResizeOrientation();
   texOnlyFilter.addEventListener('change', () => {
     renderSidebar();
     logActivity(`Sidebar-Dateifilter ${texOnlyFilter.checked ? 'aktiviert' : 'deaktiviert'}.`);
@@ -1101,9 +1159,32 @@
   function renderFileTree(items) {
     const root = document.createElement('ul');
     root.className = 'file-tree';
-    const directories = new Map([['', root]]);
+    const project = document.createElement('li');
+    project.className = 'file-item';
+    const projectButton = document.createElement('button');
+    projectButton.type = 'button';
+    projectButton.className = 'folder-toggle';
+    projectButton.textContent = `📁 ${repoName || 'Lokales Projekt'}`;
+    const projectChildren = document.createElement('ul');
+    projectChildren.hidden = collapsedFolders.has('');
+    projectButton.setAttribute('aria-expanded', String(!projectChildren.hidden));
+    projectButton.addEventListener('click', () => {
+      projectChildren.hidden = !projectChildren.hidden;
+      if (projectChildren.hidden) collapsedFolders.add('');
+      else collapsedFolders.delete('');
+      projectButton.setAttribute('aria-expanded', String(!projectChildren.hidden));
+      logActivity(`Sidebar-Projektordner ${projectChildren.hidden ? 'zugeklappt' : 'aufgeklappt'}.`);
+    });
+    project.appendChild(projectButton);
+    project.appendChild(projectChildren);
+    root.appendChild(project);
+    const directories = new Map([['', projectChildren]]);
     activeFileButtons = [];
-    const visibleFiles = items.filter((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
+    const visibleItems = items.filter((item) => {
+      const parts = item.path.split('/');
+      return !parts.includes('.git') && (item.type === 'tree' || !['.gitignore', '.gitattributes', '.gitmodules'].includes(parts[parts.length - 1]));
+    });
+    const visibleFiles = visibleItems.filter((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
     const visibleFilePaths = new Set(visibleFiles.map((item) => item.path));
     const visibleDirectories = new Set();
     for (const item of visibleFiles) {
@@ -1114,7 +1195,7 @@
         parts.pop();
       }
     }
-    const sorted = items.filter((item) => (item.type === 'tree' || item.type === 'blob' || item.type === 'commit') &&
+    const sorted = visibleItems.filter((item) => (item.type === 'tree' || item.type === 'blob' || item.type === 'commit') &&
       (!texOnlyFilter.checked || (item.type === 'tree' ? visibleDirectories.has(item.path) : item.type === 'blob' && item.mode !== '120000' && visibleFilePaths.has(item.path))))
       .sort((a, b) => a.path.split('/').length - b.path.split('/').length || a.path.localeCompare(b.path));
     for (const item of sorted) {
@@ -1175,21 +1256,23 @@
               : 'Nicht bearbeitbare Datei';
           label.setAttribute('aria-label', `${reason}: ${name}`);
         }
-        label.textContent = `${editable ? '✏️' : '🔒'} ${name}`;
+        label.textContent = editable ? name : `🔒 ${name}`;
         row.appendChild(label);
       }
       parent.appendChild(row);
+    }
+    if (!projectChildren.children.length) {
+      const empty = document.createElement('li');
+      empty.className = 'file-item';
+      empty.textContent = texOnlyFilter.checked ? 'Keine TeX-Dateien zum Anzeigen.' : 'Keine Ordner oder Dateien zum Anzeigen.';
+      projectChildren.appendChild(empty);
     }
     return root;
   }
 
   function renderSidebar() {
     const tree = renderFileTree(sidebarItems);
-    if (tree.children.length) fileList.replaceChildren(tree);
-    else {
-      activeFileButtons = [];
-      fileList.textContent = texOnlyFilter.checked ? 'Keine TeX-Dateien zum Anzeigen.' : 'Keine Ordner oder Dateien zum Anzeigen.';
-    }
+    fileList.replaceChildren(tree);
     updateActiveFileButton();
   }
 

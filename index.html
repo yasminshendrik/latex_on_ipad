@@ -25,8 +25,11 @@
     .local-project { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #444; border-radius: 6px; background: #252526; }
     .local-project p { margin: 4px 0 0; color: #aaa; font-size: 13px; overflow-wrap: anywhere; }
     #local-project-empty { color: #aaa; }
-    #sidebar { width: 250px; flex: 0 0 250px; display: flex; flex-direction: column; background: #252526; border-right: 1px solid #444; transition: width .2s, flex-basis .2s; }
+    #sidebar { width: min(var(--sidebar-width, 250px), max(180px, 100% - 120px)); flex: 0 0 min(var(--sidebar-width, 250px), max(180px, 100% - 120px)); min-width: 0; min-height: 0; display: flex; flex-direction: column; position: relative; background: #252526; border-right: 1px solid #444; }
     #sidebar.collapsed { width: 0; flex-basis: 0; overflow: hidden; border: 0; }
+    #sidebar-resize { position: absolute; z-index: 1; right: 0; top: 0; width: 16px; height: 100%; cursor: col-resize; touch-action: none; }
+    #sidebar-resize::after { content: ''; position: absolute; top: 50%; right: 5px; width: 3px; height: 36px; border-radius: 2px; background: #888; transform: translateY(-50%); }
+    #sidebar-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
     .sidebar-heading { padding: 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
     #repo-label { float: right; min-height: 0; padding: 0; color: #50b6ff; background: transparent; font-size: inherit; }
     #file-list { overflow: auto; flex: 1; }
@@ -76,8 +79,10 @@
     @media (orientation: portrait) {
       header { justify-content: flex-start; }
       #main-container { flex-direction: column; }
-      #sidebar { width: 100%; height: 145px; flex: 0 0 145px; }
+      #sidebar { width: 100%; height: min(var(--sidebar-height, 145px), max(120px, 100% - 120px)); flex: 0 0 min(var(--sidebar-height, 145px), max(120px, 100% - 120px)); }
       #sidebar.collapsed { width: 100%; height: 0; flex-basis: 0; }
+      #sidebar-resize { right: 0; top: auto; bottom: 0; width: 100%; height: 16px; cursor: row-resize; }
+      #sidebar-resize::after { top: auto; right: auto; bottom: 5px; left: 50%; width: 36px; height: 3px; transform: translateX(-50%); }
       #preview-container { width: 100%; height: 40%; }
     }
   </style>
@@ -114,6 +119,7 @@
       <div class="sidebar-heading">PROJEKTDATEIEN <button id="repo-label" type="button" title="Projekt wechseln">Repo wählen</button></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
+      <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <section id="editor-container">
       <div id="editor-surface">

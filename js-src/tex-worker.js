@@ -61,10 +61,18 @@ function compileOnce(loaded, { entry, files }) {
 }
 
 function actionableMissingFiles(result) {
-  const missingFootmisc = (result.diagnostics || []).some((item) =>
-    /File [`'‘]footmisc\.sty['’] not found/i.test(item.message || '')
-  );
-  return (result.missingFiles || []).filter((file) => file !== 'footmisc.sty' || missingFootmisc);
+  const required = new Set();
+  for (const diagnostic of result.diagnostics || []) {
+    if (diagnostic.severity !== 'error') continue;
+    const missing = /File [`'‘]([^'’`]+)['’] not found/i.exec(diagnostic.message || '');
+    if (missing) required.add(missing[1]);
+    const language = /Package babel Error: Unknown option ['‘`]([a-z-]+)['’`]/i.exec(diagnostic.message || '');
+    if (language) {
+      required.add(`${language[1]}.ldf`);
+      required.add(`babel-${language[1]}.tex`);
+    }
+  }
+  return [...required];
 }
 
 self.onmessage = async ({ data }) => {

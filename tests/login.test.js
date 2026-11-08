@@ -11,7 +11,7 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'repo-create', 'branch-select', 'file-list', 'sidebar', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
+  'repo-create', 'branch-select', 'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
@@ -33,7 +33,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   function element(tagName = 'DIV') {
     const classNames = new Set();
     return {
-      handlers: {}, children: [], attributes: {}, value: '', textContent: '', style: {}, disabled: false,
+      handlers: {}, children: [], attributes: {}, value: '', textContent: '', style: { setProperty(key, value) { this[key] = value; } }, disabled: false,
       tagName, hidden: true,
       classList: {
         add(name) { classNames.add(name); },
@@ -51,6 +51,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
       replaceChildren(...children) { this.children = children; },
       getContext() { return {}; },
       setAttribute(name, value) { this.attributes[name] = value; },
+      getBoundingClientRect() { return { width: 800, height: 600 }; },
+      setPointerCapture() {},
       removeAttribute(name) { delete this.attributes[name]; }
     };
   }
@@ -76,7 +78,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   let replacement;
   const intervals = [];
   const logs = [];
-  const window = { addEventListener() {}, __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, confirm: confirmImpl, crypto: webcrypto, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
+  const window = { addEventListener() {}, matchMedia: () => ({ matches: false }), __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, confirm: confirmImpl, crypto: webcrypto, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -298,7 +300,13 @@ test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum 
   assert.equal(app.elements['repo-dialog'].open, false);
   assert.equal(app.elements['repo-label'].textContent, 'alice/two');
   assert.equal(app.localValues.get('gh_current_branch'), 'dev');
-  const root = app.elements['file-list'].children[0];
+  const project = app.elements['file-list'].children[0].children[0];
+  assert.match(project.children[0].textContent, /alice\/two/);
+  project.children[0].handlers.click();
+  assert.equal(project.children[1].hidden, true);
+  assert.equal(project.children[0].attributes['aria-expanded'], 'false');
+  project.children[0].handlers.click();
+  const root = project.children[1];
   const folder = root.children.find((child) => child.children[0].textContent.includes('ordner'));
   const nested = folder.children[1].children[0];
   const file = nested.children[1].children[0];
@@ -352,7 +360,7 @@ test('TeX-Filter zeigt nur bearbeitbare TeX-Dateien samt übergeordneten Ordnern
   assert.match(html, /id="tex-only-filter"[^>]*checked/);
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
-  let root = app.elements['file-list'].children[0];
+  let root = app.elements['file-list'].children[0].children[0].children[1];
   assert.equal(root.children.length, 2);
   let folder = root.children.find((row) => row.children[0].textContent.includes('kapitel'));
   assert.equal(folder.children[1].children.length, 1);
@@ -360,11 +368,83 @@ test('TeX-Filter zeigt nur bearbeitbare TeX-Dateien samt übergeordneten Ordnern
   folder.children[0].handlers.click();
   app.elements['tex-only-filter'].checked = false;
   app.elements['tex-only-filter'].handlers.change();
-  root = app.elements['file-list'].children[0];
+  root = app.elements['file-list'].children[0].children[0].children[1];
   folder = root.children.find((row) => row.children[0].textContent.includes('kapitel'));
   assert.equal(folder.children[1].hidden, true);
   assert.equal(folder.children[1].children.length, 2);
   assert.ok(root.children.some((row) => row.children[0].textContent.includes('bilder')));
+});
+
+test('Git-Dateien bleiben gespeichert, aber online und offline in beiden Filterzuständen unsichtbar', async () => {
+  const database = new IDBFactory();
+  const paths = ['main.tex', '.gitignore', '.gitattributes', '.gitmodules', 'sub/.gitignore', '.git/config', '.git/nested/hidden.tex', 'sub/readme.txt'];
+  const tree = [
+    { type: 'tree', path: '.git' }, { type: 'tree', path: '.git/nested' }, { type: 'tree', path: 'sub' },
+    ...paths.map((path) => ({ type: 'blob', path }))
+  ];
+  const online = setup({ indexedDBInstance: database, fetchImpl: async (url) => {
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos')) return response([{ full_name: 'alice/gitfiles', default_branch: 'main' }]);
+    if (url.includes('/branches')) return response([{ name: 'main' }]);
+    if (url.includes('/git/trees/')) return response({ truncated: false, tree });
+    if (url.includes('/contents/')) return { ok: true, text: async () => 'Dateiinhalt' };
+    throw new Error(`Unerwartete URL: ${url}`);
+  } });
+  await submit(online, 'github_pat_test123');
+  await online.elements['repo-list'].children[0].handlers.click();
+  function collect(element) {
+    return [element.textContent, ...element.children.flatMap(collect)].join(' ');
+  }
+  for (const checked of [true, false]) {
+    online.elements['tex-only-filter'].checked = checked;
+    online.elements['tex-only-filter'].handlers.change();
+    const text = collect(online.elements['file-list']);
+    assert.doesNotMatch(text, /hidden\.tex|\.gitignore|\.gitattributes|\.gitmodules|📁 \.git(?:\s|$)/);
+    assert.match(text, /main\.tex/);
+    if (!checked) assert.match(text, /readme\.txt/);
+  }
+  const offline = setup({ indexedDBInstance: database });
+  offline.context.navigator.onLine = false;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  await offline.elements['local-project-list'].children[0].children[1].handlers.click();
+  for (const checked of [true, false]) {
+    offline.elements['tex-only-filter'].checked = checked;
+    offline.elements['tex-only-filter'].handlers.change();
+    const text = collect(offline.elements['file-list']);
+    assert.doesNotMatch(text, /hidden\.tex|\.gitignore|\.gitattributes|\.gitmodules|📁 \.git(?:\s|$)/);
+    assert.match(text, /main\.tex/);
+  }
+  const db = await new Promise((resolve, reject) => {
+    const request = database.open('LaTeXPWA_VFS', 2);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  const records = await new Promise((resolve, reject) => {
+    const request = db.transaction('files').objectStore('files').getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  for (const path of paths) assert.ok(records.some((record) => record.path === path), `${path} bleibt gespeichert`);
+});
+
+test('Sidebar-Größe ist per Zeiger und Tastatur mit Mindestgröße in beiden Ausrichtungen veränderbar', () => {
+  const app = setup();
+  let portrait = false;
+  app.context.window.matchMedia = () => ({ matches: portrait });
+  app.elements.sidebar.getBoundingClientRect = () => ({ width: 250, height: 145 });
+  const resize = app.elements['sidebar-resize'];
+  resize.handlers.pointerdown({ button: 0, pointerId: 1, clientX: 250, clientY: 145, preventDefault() {} });
+  resize.handlers.pointermove({ pointerId: 1, clientX: 0, clientY: 145 });
+  resize.handlers.pointerup({ pointerId: 1 });
+  assert.equal(app.elements.sidebar.style['--sidebar-width'], '180px');
+  portrait = true;
+  resize.handlers.pointerdown({ button: 0, pointerId: 2, clientX: 0, clientY: 145, preventDefault() {} });
+  resize.handlers.pointermove({ pointerId: 2, clientX: 0, clientY: 0 });
+  resize.handlers.pointerup({ pointerId: 2 });
+  assert.equal(app.elements.sidebar.style['--sidebar-height'], '120px');
+  resize.handlers.keydown({ key: 'ArrowDown', preventDefault() {} });
+  assert.equal(app.elements.sidebar.style['--sidebar-height'], '165px');
+  assert.ok(app.logs.some((entry) => /Sidebar-Größe geändert/.test(entry)));
 });
 
 test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen Offline-Cache', async () => {
@@ -390,15 +470,16 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   app.context.navigator.onLine = true;
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
-  let root = app.elements['file-list'].children[0];
+  let root = app.elements['file-list'].children[0].children[0].children[1];
   const chapter = root.children[0].children[0];
   const main = root.children[1].children[0];
   assert.equal(chapter.tagName, 'BUTTON');
+  assert.equal(chapter.textContent, 'chapter.tex');
   assert.equal(chapter.attributes['aria-label'], 'LaTeX-Datei bearbeiten: chapter.tex');
   assert.equal(root.children.length, 3);
   app.elements['tex-only-filter'].checked = false;
   app.elements['tex-only-filter'].handlers.change();
-  root = app.elements['file-list'].children[0];
+  root = app.elements['file-list'].children[0].children[0].children[1];
   const bibliography = root.children[2].children[0];
   assert.equal(bibliography.tagName, 'SPAN');
   assert.equal(bibliography.attributes['aria-label'], 'Nicht bearbeitbare Datei: refs.bib');
@@ -446,7 +527,7 @@ test('Repository-Öffnen lädt alle regulären Dateien und meldet Git-LFS sowie 
   assert.match(app.footer.textContent, /Git-Submodule/);
   app.elements['tex-only-filter'].checked = false;
   app.elements['tex-only-filter'].handlers.change();
-  const vendor = app.elements['file-list'].children[0].children.find((row) => row.children[0].textContent.includes('vendor'));
+  const vendor = app.elements['file-list'].children[0].children[0].children[1].children.find((row) => row.children[0].textContent.includes('vendor'));
   const submodule = vendor.children[1].children[0].children[0];
   assert.match(submodule.attributes['aria-label'], /Git-Submodule nicht unterstützt/);
 });
@@ -921,7 +1002,7 @@ test('Ein leeres Repository wird ohne Baumabfrage geöffnet', async () => {
   } });
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
-  assert.match(app.elements['file-list'].textContent, /Keine TeX-Dateien/);
+  assert.match(app.elements['file-list'].children[0].children[0].children[0].textContent, /alice\/empty/);
   assert.equal(app.elements['repo-label'].textContent, 'alice/empty');
 });
 
@@ -949,7 +1030,7 @@ test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausricht
   assert.match(html, /button, select \{ min-height: 36px;/);
   assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
   assert.match(html, /#preview-container \{ display: none; width: 40%;/);
-  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ width: 100%; height: 145px;/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ width: 100%; height: min\(var\(--sidebar-height/);
   assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#preview-container \{ width: 100%; height: 40%; \}/);
 });
 

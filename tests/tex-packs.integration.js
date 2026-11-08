@@ -82,6 +82,23 @@ test('Der echte TeX-Worker bietet Babel an und unterscheidet footmisc-Suchproben
   assert.ok(!normal.unsupportedFiles.includes('footmisc.sty'));
   assert.equal(normal.missingPacks.length, 0);
 
+  const missingClass = await compile(plain, []);
+  assert.equal(missingClass.status, 'failed');
+  assert.ok(missingClass.missingPacks.some((pack) => pack.id === 'koma-script'));
+
+  const optional = '\\documentclass{article}\n\\IfFileExists{fancyhdr.sty}{}{}\n\\begin{document}Hallo\\end{document}';
+  const optionalSuccess = await compile(optional, []);
+  assert.equal(optionalSuccess.status, 'spotless');
+  assert.equal(optionalSuccess.missingPacks.length, 0);
+  assert.ok(!optionalSuccess.unsupportedFiles.includes('fancyhdr.sty'));
+  const optionalWithError = await compile(optional.replace('Hallo', '\\undefinedcommand'), []);
+  assert.ok(optionalWithError.diagnostics.some((item) => item.severity === 'error'));
+  assert.equal(optionalWithError.missingPacks.length, 0);
+  const requiredPackage = await compile(optional.replace('\\IfFileExists{fancyhdr.sty}{}{}', '\\usepackage{fancyhdr}'), []);
+  assert.ok(requiredPackage.missingPacks.some((pack) => pack.id === 'writing'));
+  const withDependency = await compile(optional.replace('\\IfFileExists{fancyhdr.sty}{}{}', '\\usepackage{float}'), []);
+  assert.deepEqual(Array.from(withDependency.missingPacks, (pack) => pack.id), ['writing', 'figures']);
+
   const explicit = await compile(plain.replace('\\begin{document}', '\\usepackage{footmisc}\n\\begin{document}'), [koma]);
   assert.equal(explicit.status, 'failed');
   assert.ok(explicit.missingFiles.includes('footmisc.sty'));
