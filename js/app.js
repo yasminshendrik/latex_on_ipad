@@ -22,6 +22,8 @@
   const lintResults = document.getElementById('lint-results');
   const compileSummary = document.getElementById('compile-summary');
   const compileResults = document.getElementById('compile-results');
+  const copyCompileButton = document.getElementById('copy-compile-btn');
+  let compileReportLines = [];
   const mainFileSelect = document.getElementById('main-file-select');
   const previewStatus = document.getElementById('preview-status');
   const pdfPages = document.getElementById('pdf-pages');
@@ -386,6 +388,7 @@
       pdfRenderId += 1;
       compileDiagnostics = [];
       compileSummary.textContent = 'Kompilierung noch nicht gelaufen.';
+      compileReportLines = [];
       compileResults.replaceChildren();
       previewStatus.textContent = 'Noch keine Vorschau.';
       pdfPages.replaceChildren();
@@ -535,8 +538,37 @@
       children.push(list);
     }
     compileResults.replaceChildren(...children);
+    compileReportLines = [compileSummary.textContent];
+    if (missing.length) compileReportLines.push(children[0].textContent);
+    if (result.status === 'failed' && result.message) compileReportLines.push(result.message);
+    compileReportLines.push(...entries.map((entry) => entry.textContent));
     applyCompileMarkers();
   }
+
+  async function copyCompileReport() {
+    const text = compileReportLines.length ? compileReportLines.join('\n') : compileSummary.textContent;
+    try {
+      if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(text);
+      else {
+        const temporary = document.createElement('textarea');
+        temporary.value = text;
+        temporary.setAttribute('readonly', '');
+        temporary.style.position = 'fixed';
+        temporary.style.opacity = '0';
+        document.body.appendChild(temporary);
+        temporary.select();
+        const copied = document.execCommand('copy');
+        temporary.remove();
+        if (!copied) throw new Error('Kopieren wird nicht unterstützt.');
+      }
+      logActivity('Kompilierungsmeldungen in die Zwischenablage kopiert.');
+      copyCompileButton.title = 'Kopiert';
+    } catch (error) {
+      logActivity('Kopieren der Kompilierungsmeldungen fehlgeschlagen.');
+      copyCompileButton.title = 'Kopieren fehlgeschlagen';
+    }
+  }
+  copyCompileButton.addEventListener('click', copyCompileReport);
 
   function loadPdfjs() {
     pdfjsPromise ||= import(new URL('./pdfjs/pdf.min.mjs', SCRIPT_URL).href).then((library) => {
@@ -618,6 +650,7 @@
       return;
     }
     compileSummary.textContent = `Kompilierung von ${main} läuft…`;
+    compileReportLines = [];
     previewStatus.textContent = `Kompilierung von ${main} läuft…`;
     logActivity(`Kompilierung gestartet (${records.length} Projektdateien).`);
     let result;

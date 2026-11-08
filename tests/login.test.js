@@ -17,7 +17,7 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-
   'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo', 'sync-conflict-dialog',
   'sync-conflict-description', 'sync-conflict-local', 'sync-conflict-remote',
   'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
-  'compile-summary', 'compile-results', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
+  'compile-summary', 'compile-results', 'copy-compile-btn', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
 
 function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
@@ -663,6 +663,27 @@ test('Compiler-Meldungen und fehlende Klassen erscheinen im allgemeinen Protokol
   assert.match(log, /Kompilierung Fehler \(main\.tex:1\): LaTeX Error: File `scrbook\.cls' not found/);
   assert.match(log, /nicht verfügbare Dateien: scrbook\.cls/);
   assert.match(app.elements['compile-results'].children[0].textContent, /scrbook\.cls.*nicht unterstützt/);
+});
+
+test('Copy-Button kopiert nur die Kompilierungsmeldungen', async () => {
+  const { app, tex, tick } = await texWorkerSetup();
+  const copied = [];
+  app.context.navigator.clipboard = { writeText: async (text) => { copied.push(text); } };
+  app.context.window.isSecureContext = true;
+  app.elements.editor.value = 'GEHEIMER-INHALT';
+  await app.elements['save-btn'].handlers.click();
+  await tick();
+  tex().onmessage({ data: {
+    id: tex().requests[0].id, status: 'errors',
+    diagnostics: [{ severity: 'error', file: 'main.tex', line: 3, message: 'Undefined control sequence.' }]
+  } });
+  await tick();
+  await app.elements['copy-compile-btn'].handlers.click();
+  assert.equal(copied.length, 1);
+  assert.match(copied[0], /mit Fehlern \(1 Fehler/);
+  assert.match(copied[0], /Fehler: main\.tex:3 – Undefined control sequence\./);
+  assert.doesNotMatch(copied[0], /GEHEIMER-INHALT/);
+  assert.ok(app.logs.some((entry) => entry.includes('in die Zwischenablage kopiert')));
 });
 
 test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {
