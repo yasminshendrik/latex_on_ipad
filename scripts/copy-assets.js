@@ -9,6 +9,7 @@ const engine = path.join(modules, 'glyphtex-engine/wasm');
 const output = path.join(root, 'js/engine');
 const packOutput = path.join(output, 'packs');
 const komaSource = JSON.parse(fs.readFileSync(path.join(__dirname, 'koma-script-pack.json'), 'utf8'));
+const babelSource = JSON.parse(fs.readFileSync(path.join(__dirname, 'babel-packs.json'), 'utf8'));
 
 function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
@@ -70,6 +71,37 @@ async function buildKomaPack() {
   };
 }
 
+async function buildBabelPacks(index, integrity) {
+  const base = `https://raw.githubusercontent.com/${babelSource.repository}/${babelSource.revision}/${babelSource.basePath}`;
+  const lppl = await fetchBytes(`https://raw.githubusercontent.com/${komaSource.repository}/${komaSource.revision}/${komaSource.licensePath}`);
+  if (gitBlobSha(lppl) !== komaSource.licenseSha) throw new Error('Prüfsumme der LPPL-Lizenzdatei stimmt nicht.');
+  const unicodeLicense = await fetchBytes(babelSource.unicodeLicense.url);
+  if (gitBlobSha(unicodeLicense) !== babelSource.unicodeLicense.sha) throw new Error('Prüfsumme der Unicode-Lizenzdatei stimmt nicht.');
+  for (const definition of babelSource.packs) {
+    const files = await Promise.all(Object.entries(definition.files).map(async ([name, [source, expectedSha]]) => {
+      const bytes = await fetchBytes(`${base}/${source}`);
+      if (gitBlobSha(bytes) !== expectedSha) throw new Error(`Prüfsumme der Babel-Datei ${name} stimmt nicht.`);
+      return { name, bytes };
+    }));
+    files.push({ name: 'LPPL.txt', bytes: lppl });
+    if (definition.id === 'babel-ngerman') files.push({ name: 'UNICODE-LICENSE.txt', bytes: unicodeLicense });
+    const archive = gzipSync(Buffer.concat([...files.map(({ name, bytes }) => tarEntry(name, bytes)), Buffer.alloc(1024)]), { level: 9, mtime: 0 });
+    const pack = {
+      id: definition.id, label: definition.label, description: definition.description,
+      packages: [definition.id], requires: definition.requires, optional: true,
+      bytes: archive.length, hash: babelSource.version, version: babelSource.version,
+      source: `https://github.com/${babelSource.repository}/tree/${babelSource.revision}/${babelSource.basePath}`,
+      license: definition.license, integrity: sha256(archive)
+    };
+    const filename = `pack-${pack.id}-${pack.hash}.tar.gz`;
+    fs.writeFileSync(path.join(packOutput, filename), archive);
+    integrity[filename] = pack.integrity;
+    index.packs.push(pack);
+    for (const name of definition.provides) index.provides[name] = pack.id;
+    console.log(`${pack.label} (${archive.length} Bytes)`);
+  }
+}
+
 async function main() {
   fs.mkdirSync(packOutput, { recursive: true });
   const jobs = [
@@ -127,6 +159,7 @@ async function main() {
   index.packs.push(komaPack);
   for (const filename of koma.files) index.provides[filename] = komaPack.id;
 
+  await buildBabelPacks(index, integrity);
   fs.writeFileSync(path.join(packOutput, 'packs-index.json'), `${JSON.stringify(index)}\n`);
   fs.writeFileSync(path.join(packOutput, 'packs-integrity.json'), `${JSON.stringify(integrity)}\n`);
   console.log(`KOMA-Script ${komaSource.version} (${koma.files.length} Dateien; ${koma.archive.length} Bytes)`);

@@ -26,8 +26,10 @@ Die App prüft die aktive Datei während der Bearbeitung in einem lokal ausgelie
 Der Worker verwendet den MIT-lizenzierten Parser `@unified-latex/unified-latex-util-pegjs`; die Lizenz liegt unter `js/UNIFIED-LATEX-LICENSE.txt`. Nach Änderungen an `js-src/lint-worker.js` wird das ausgelieferte Bundle mit `npm ci` und `npm run build:lint-worker` neu erzeugt.
 
 ## TeX-Engine und Vorschau
-Die Kompilierung nutzt `glyphtex-engine` und PDF.js. Die großen Assets werden nicht eingecheckt: `npm ci && npm run build` erzeugt `js/engine/` und `js/pdfjs/`. Der Asset-Build lädt das gepinnte KOMA-Script-Paket aus einer öffentlichen Quelle und prüft jede Quelldatei anhand ihrer Git-Blob-Prüfsumme. Lizenzhinweise: `js/THIRD-PARTY-NOTICES.md`.
+Die Kompilierung nutzt `glyphtex-engine` und PDF.js. Die großen Assets werden nicht eingecheckt: `npm ci && npm run build` erzeugt `js/engine/` und `js/pdfjs/`. Der Asset-Build lädt die gepinnten KOMA-Script- und Babel-Dateien aus öffentlichen Quellen und prüft sie anhand ihrer Git-Blob-Prüfsummen. Lizenzhinweise: `js/THIRD-PARTY-NOTICES.md`.
 
 Wenn beim Kompilieren ein unterstütztes TeX-Paket fehlt, fragt die App vor dem Download nach Zustimmung. Nach erfolgreicher Größen- und SHA-256-Prüfung wird das Archiv lokal in IndexedDB dem aktuellen Projekt und Branch zugeordnet. Spätere Kompilierungen können das Paket offline verwenden; ohne IndexedDB wird es nicht heruntergeladen. Projekt-Export und -Import der Pakete sind noch nicht umgesetzt. Das allgemeine TeX-Bundle der Engine steht unabhängig davon weiter zur Verfügung.
+
+Für `babel` mit `ngerman` können die neutrale Babel-Grundsprache und deutsche Sprachdaten nachgeladen werden. Die verwendete Engine hat jedoch keine deutschen Silbentrennungsmuster vorgeladen: Babel weicht auf englische Muster aus und das Compiler-Protokoll warnt davor. `footmisc` selbst ist nicht im Paketindex enthalten; eine optionale KOMA-Script-Suchprobe wird nicht als fehlendes Paket angezeigt, ein tatsächlicher Fehler beim Laden dagegen schon.
 
 `npm test` führt die Unit-Tests aus. Nach `npm run build` prüft `npm run test:integration` zusätzlich eine echte Kompilierung mit `scrbook`.

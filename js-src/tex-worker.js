@@ -60,6 +60,13 @@ function compileOnce(loaded, { entry, files }) {
   return { result, pdf };
 }
 
+function actionableMissingFiles(result) {
+  const missingFootmisc = (result.diagnostics || []).some((item) =>
+    /File [`'‘]footmisc\.sty['’] not found/i.test(item.message || '')
+  );
+  return (result.missingFiles || []).filter((file) => file !== 'footmisc.sty' || missingFootmisc);
+}
+
 self.onmessage = async ({ data }) => {
   const { id } = data;
   try {
@@ -81,14 +88,25 @@ self.onmessage = async ({ data }) => {
       outcome = compileOnce(loaded, data);
     }
     const { result, pdf } = outcome;
-    const resolution = resolveMissing(packIndex, result.missingFiles || [], activePackages);
+    const missingFiles = actionableMissingFiles(result);
+    const resolution = resolveMissing(packIndex, missingFiles, activePackages);
+    const diagnostics = [...(result.diagnostics || [])];
+    const jobname = data.entry.replace(/\.[^./]+$/, '');
+    if (/Hyphen rules for ['‘`]ngerman['’`] set to \\l@english/.test(loaded.log(jobname) || '')) {
+      diagnostics.push({
+        severity: 'warning',
+        file: null,
+        line: null,
+        message: 'Für ngerman sind keine deutschen Silbentrennungsmuster in der TeX-Engine vorgeladen; Babel verwendet englische Muster.'
+      });
+    }
     const copy = pdf ? pdf.slice().buffer : undefined;
     self.postMessage({
       id,
       status: result.status,
       message: result.message,
-      diagnostics: result.diagnostics,
-      missingFiles: result.missingFiles,
+      diagnostics,
+      missingFiles,
       missingPacks: resolution.packs.map((pack) => ({
         id: pack.id,
         label: pack.label,

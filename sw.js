@@ -5,7 +5,8 @@ const ASSETS = [
   './manifest.json',
   './js/app.js',
   './js/lint-worker.js',
-  './js/tex-worker.js'
+  './js/tex-worker.js',
+  './js/engine/packs/packs-index.json'
 ];
 
 // Große Engine-, Paket- und PDF.js-Dateien liegen in einem eigenen, versionierten Cache.
@@ -54,6 +55,17 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate' && isOAuthCallback(requestUrl)) {
     event.respondWith(caches.match('./index.html').then((cachedIndex) => cachedIndex || fetch(event.request)));
+    return;
+  }
+
+  if (requestUrl.pathname === new URL('./js/engine/packs/packs-index.json', self.registration.scope).pathname) {
+    event.respondWith(caches.open(CACHE_NAME).then(async (cache) => {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      const response = await fetch(event.request);
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
+    }));
     return;
   }
 

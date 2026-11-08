@@ -20,6 +20,11 @@ Diese Komponenten werden nicht vom Projekt selbst entwickelt. Sie werden beim Ve
 - Das Paket wird beim Asset-Build aus einer festgelegten Revision geladen; alle enthaltenen Laufzeitdateien und die Lizenzdatei werden vor der Archivierung gegen die im `scripts/koma-script-pack.json` festgehaltenen Git-Blob-Prüfsummen geprüft.
 - Die App lädt das Paket erst nach ausdrücklicher Zustimmung und prüft zusätzlich Größe und SHA-256, bevor sie es lokal speichert.
 
+## Babel-Sprachdaten
+
+- Herkunft: <https://github.com/deepin-community/texlive-base/tree/3b530356bc4630a7a13bf6f6af00c864f17e9a33/texmf-dist/tex/generic/babel>. Die Liste der Quelldateien und ihre Git-Blob-Prüfsummen stehen in `scripts/babel-packs.json`.
+- `nil.ldf` und `babel-ngerman.tex` gehören zu Babel (LPPL 1.3 oder später). Die deutschen `.ini`-Daten nennen zusätzlich Daten aus dem Unicode Common Locale Data Repository. Beide Archive enthalten den LPPL-Lizenztext; das deutsche Archiv enthält zusätzlich den [Unicode-Lizenztext](https://github.com/unicode-org/cldr/blob/f800890ea86482c2eb5f73224897f4a8bc0b653a/unicode-license.txt), dessen Git-Blob-Prüfsumme ebenfalls beim Build geprüft wird.
+
 ## PDF.js (pdfjs-dist 6.5.438, Legacy-Build)
 
 - Herkunft: <https://github.com/mozilla/pdf.js>

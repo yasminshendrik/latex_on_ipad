@@ -15,6 +15,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
   const deletedCaches = [];
   const writes = [];
   const addedAssets = [];
+  const openedCaches = [];
   const networkRequests = [];
   const index = { name: 'index' };
   const network = { name: 'network', ok: true, clone() { return this; } };
@@ -28,7 +29,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
   const caches = {
     async keys() { return [currentCache, 'latex-pwa-old', 'latex-assets-v1', 'unrelated-cache']; },
     async delete(name) { deletedCaches.push(name); return true; },
-    async open() { return cache; },
+    async open(name) { openedCaches.push(name); return cache; },
     async match(request) {
       if (request === './index.html') return missingIndex ? undefined : index;
       return cached.get(request.url);
@@ -49,7 +50,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
       return network;
     }
   });
-  return { handlers, cached, deletedCaches, writes, networkRequests, index, network, addedAssets };
+  return { handlers, cached, deletedCaches, writes, networkRequests, index, network, addedAssets, openedCaches };
 }
 
 test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
@@ -59,7 +60,8 @@ test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
   await installation;
   assert.ok(worker.addedAssets.includes('./js/lint-worker.js'));
   assert.ok(worker.addedAssets.includes('./js/tex-worker.js'));
-  assert.ok(!worker.addedAssets.some((asset) => /engine|pdfjs/.test(asset)));
+  assert.ok(worker.addedAssets.includes('./js/engine/packs/packs-index.json'));
+  assert.ok(!worker.addedAssets.some((asset) => /(?:\.wasm|\.tar\.gz|pdfjs)/.test(asset)));
 });
 
 function dispatchFetch(worker, url, mode = 'navigate') {
@@ -132,4 +134,13 @@ test('Große Engine- und PDF.js-Dateien werden beim ersten Abruf gecacht und dan
   assert.equal((await dispatchFetch(offline, `${scope}js/engine/tectonic-bundle.tar.gz`, 'same-origin')).name, 'bundle');
   assert.equal((await dispatchFetch(offline, `${scope}js/engine/packs/pack-koma-script.tar.gz`, 'same-origin')).name, 'koma-pack');
   await assert.rejects(dispatchFetch(offline, `${scope}js/engine/tectonic_wasm.wasm`, 'same-origin'));
+});
+
+test('Der Paketindex nutzt den aktualisierten App-Cache statt des langlebigen Asset-Caches', async () => {
+  const worker = createWorker();
+  const url = `${scope}js/engine/packs/packs-index.json`;
+  assert.equal(await dispatchFetch(worker, url, 'same-origin'), worker.network);
+  assert.deepEqual(worker.openedCaches, [currentCache]);
+  assert.equal(await dispatchFetch(worker, url, 'same-origin'), worker.network);
+  assert.deepEqual(worker.networkRequests, [url]);
 });

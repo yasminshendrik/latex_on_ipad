@@ -753,6 +753,40 @@ test('Abgelehnte TeX-Paketfreigabe löst keinen Paketabruf aus', async () => {
   assert.match(app.app.context.window.compilerLog, /Download der benötigten TeX-Pakete wurde abgelehnt/);
 });
 
+test('Babel-Sprachpaket und Grundsprache werden gemeinsam nach Freigabe installiert', async () => {
+  const archive = new Uint8Array([1, 2, 3]);
+  const integrity = createHash('sha256').update(archive).digest('hex');
+  const prompts = [];
+  const app = await texWorkerSetup({}, undefined, {
+    withIndexedDB: true,
+    confirmImpl: (message) => { prompts.push(message); return true; },
+    fetchImpl: async () => ({
+      ok: true, status: 200,
+      arrayBuffer: async () => archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength)
+    })
+  });
+  app.app.elements.editor.value = '\\usepackage[ngerman]{babel}';
+  await app.app.elements['save-btn'].handlers.click();
+  await app.tick();
+  const request = app.tex().requests[0];
+  app.tex().onmessage({ data: {
+    id: request.id, status: 'failed', diagnostics: [], missingFiles: ['babel-ngerman.tex'],
+    missingPacks: [
+      { id: 'babel-nil', label: 'Babel-Grundsprache', hash: '2024-10-24', bytes: 3, integrity },
+      { id: 'babel-ngerman', label: 'Babel Deutsch', hash: '2024-10-24', bytes: 3, integrity }
+    ]
+  } });
+  for (let attempt = 0; attempt < 20 && app.tex().requests.length < 2; attempt += 1) await app.tick();
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0], /Babel-Grundsprache/);
+  assert.match(prompts[0], /Babel Deutsch/);
+  assert.equal(app.app.requests.length, 2);
+  const next = app.tex().requests[1];
+  assert.deepEqual(Array.from(next.packages, (pack) => pack.id).sort(), ['babel-ngerman', 'babel-nil']);
+  app.tex().onmessage({ data: { id: next.id, status: 'spotless', diagnostics: [], missingFiles: [] } });
+  await app.tick();
+});
+
 test('Ohne IndexedDB werden TeX-Pakete weder heruntergeladen noch als offline verfügbar ausgegeben', async () => {
   const app = await texWorkerSetup({}, undefined, {
     confirmImpl: () => true,

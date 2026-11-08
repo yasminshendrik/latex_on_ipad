@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { createHash } = require('node:crypto');
+const { createHash, webcrypto } = require('node:crypto');
+const vm = require('node:vm');
 const { TexEngine, parsePackIndex, resolveMissing, unpackTarGz } = require('glyphtex-engine');
 
 const root = path.join(__dirname, '..');
@@ -40,4 +41,64 @@ test('Das ausgelieferte KOMA-Script-Paket ermöglicht eine echte scrbook-Kompili
   const result = compiler.compile({ entry: 'main.tex', haltOnError: false, shellEscape: false, synctex: false });
   assert.notEqual(result.status, 'failed', result.message || 'scrbook-Kompilierung ist fehlgeschlagen.');
   assert.ok(compiler.output('main.pdf')?.length > 0, 'scrbook muss eine PDF-Datei erzeugen.');
+});
+
+test('Der echte TeX-Worker bietet Babel an und unterscheidet footmisc-Suchproben von Fehlern', async () => {
+  const packPath = path.join(root, 'js/engine/packs');
+  const index = JSON.parse(fs.readFileSync(path.join(packPath, 'packs-index.json'), 'utf8'));
+  const loadPack = (id) => {
+    const pack = index.packs.find((item) => item.id === id);
+    assert.ok(pack, `${id} fehlt im Index.`);
+    return { id, hash: pack.hash, archive: new Uint8Array(fs.readFileSync(path.join(packPath, `pack-${id}-${pack.hash}.tar.gz`))) };
+  };
+  let response;
+  const worker = {
+    location: { href: 'https://example.test/js/tex-worker.js' },
+    postMessage(data) { response = data; }
+  };
+  const requests = [];
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'js/tex-worker.js'), 'utf8'), {
+    self: worker, URL, TextDecoder, TextEncoder, Uint8Array, ArrayBuffer, WebAssembly,
+    DecompressionStream, Response, Blob, crypto: webcrypto, console,
+    fetch: async (url) => {
+      requests.push(url);
+      const filename = new URL(url).pathname.replace(/^\/js\//, '');
+      return new Response(fs.readFileSync(path.join(root, 'js', filename)));
+    }
+  });
+  async function compile(source, packages) {
+    response = undefined;
+    await worker.onmessage({ data: { id: 1, projectKey: 'projekt/main', entry: 'main.tex', files: { 'main.tex': source }, packages } });
+    assert.ok(response, 'Der Worker muss ein Ergebnis zurückgeben.');
+    assert.equal(response.error, undefined);
+    return response;
+  }
+  const koma = loadPack('koma-script');
+  const plain = '\\documentclass{scrbook}\n\\begin{document}Hallo\\end{document}';
+  const normal = await compile(plain, [koma]);
+  assert.equal(normal.status, 'spotless');
+  assert.ok(normal.pdf?.byteLength > 0);
+  assert.ok(!normal.missingFiles.includes('footmisc.sty'));
+  assert.ok(!normal.unsupportedFiles.includes('footmisc.sty'));
+  assert.equal(normal.missingPacks.length, 0);
+
+  const explicit = await compile(plain.replace('\\begin{document}', '\\usepackage{footmisc}\n\\begin{document}'), [koma]);
+  assert.equal(explicit.status, 'failed');
+  assert.ok(explicit.missingFiles.includes('footmisc.sty'));
+  assert.ok(explicit.unsupportedFiles.includes('footmisc.sty'));
+  assert.match(explicit.diagnostics.map((item) => item.message).join('\n'), /footmisc\.sty/);
+
+  const german = '\\documentclass{scrbook}\n\\usepackage[ngerman]{babel}\n\\begin{document}\\chapter{Einführung} Überprüfung.\\end{document}';
+  const before = await compile(german, [koma]);
+  assert.equal(before.status, 'failed');
+  assert.deepEqual(Array.from(before.missingPacks, (pack) => pack.id), ['babel-nil', 'babel-ngerman']);
+  assert.ok(!before.unsupportedFiles.includes('footmisc.sty'));
+  assert.ok(!requests.some((url) => /pack-.*\.tar\.gz/.test(url)), 'Der Worker darf keine Paketarchive selbst herunterladen.');
+
+  const offline = await compile(german, [koma, loadPack('babel-nil'), loadPack('babel-ngerman')]);
+  assert.equal(offline.status, 'spotless', JSON.stringify(offline.diagnostics));
+  assert.ok(offline.pdf?.byteLength > 0);
+  assert.equal(offline.missingPacks.length, 0);
+  assert.ok(!offline.missingFiles.includes('footmisc.sty'));
+  assert.ok(offline.diagnostics.some((item) => item.severity === 'warning' && /Silbentrennungsmuster/.test(item.message)));
 });
