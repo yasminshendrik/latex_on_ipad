@@ -1,5 +1,7 @@
 # Story 6: Offline-Fähigkeit, lokale Speicherung & Sync-Queue
 
+> **GitHub Issue:** [#25](https://github.com/yasminshendrik/latex_on_ipad/issues/25) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel

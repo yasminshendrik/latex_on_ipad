@@ -1,5 +1,7 @@
 # Story 1.4: Branching & In-App Branch-Switching
 
+> **GitHub Issue:** [#6](https://github.com/yasminshendrik/latex_on_ipad/issues/6) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel

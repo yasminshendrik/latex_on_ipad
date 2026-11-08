@@ -1,5 +1,7 @@
 # User Stories, Entwicklungs-Roadmap & Statusübersicht
 
+> **GitHub-Tracking seit 2026-11-08:** Alle Einzelstories wurden als GitHub Issues migriert. Der aktuelle Status und die weitere Pflege erfolgen ausschließlich im [GitHub Issue Tracker](https://github.com/yasminshendrik/latex_on_ipad/issues). Diese Roadmap und die verlinkten Story-Dateien sind Referenzkopien des Migrationsstands; siehe [Story-Issue-Zuordnung](README.md).
+
 Diese Datei ist die zentrale Statusübersicht. Detailanforderungen und Teilschritte stehen in den verlinkten Story-Dateien. Statusangaben müssen dem tatsächlich implementierten Code entsprechen. Der PAT-Login ist für den aktuellen Umfang gemäß Story 1.6 akzeptiert; weitere reproduzierbare Integrationstests stehen im Testplan.
 
 ## Gesamtübersicht

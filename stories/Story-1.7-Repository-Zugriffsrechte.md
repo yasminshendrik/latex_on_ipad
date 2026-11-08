@@ -1,5 +1,7 @@
 # Story 1.7: Repository-Zugriffsrechte kennzeichnen
 
+> **GitHub Issue:** [#9](https://github.com/yasminshendrik/latex_on_ipad/issues/9) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Im Code umgesetzt**
 
 ## Ziel

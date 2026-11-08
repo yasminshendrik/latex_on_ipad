@@ -1,5 +1,7 @@
 # Story 4: Projektbezogene Live-Vorschau
 
+> **GitHub Issue:** [#21](https://github.com/yasminshendrik/latex_on_ipad/issues/21) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Im Code umgesetzt; iPad/Safari ungetestet**
 
 ## Ziel

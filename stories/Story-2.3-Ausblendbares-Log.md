@@ -1,5 +1,7 @@
 # Story 2.3: Ausblendbares Log am unteren Rand
 
+> **GitHub Issue:** [#15](https://github.com/yasminshendrik/latex_on_ipad/issues/15) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Im Code umgesetzt**
 
 ## Ziel

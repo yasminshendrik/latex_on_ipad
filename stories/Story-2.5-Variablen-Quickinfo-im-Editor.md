@@ -1,5 +1,7 @@
 # Story 2.5: Variablen-Quickinfo im Editor
 
+> **GitHub Issue:** [#17](https://github.com/yasminshendrik/latex_on_ipad/issues/17) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Ausstehend**
 
 ## Ziel

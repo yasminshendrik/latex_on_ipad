@@ -1,5 +1,7 @@
 # Story 8: Commit-Historie & Undo/Rollback
 
+> **GitHub Issue:** [#27](https://github.com/yasminshendrik/latex_on_ipad/issues/27) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Ausstehend**
 
 ## Ziel

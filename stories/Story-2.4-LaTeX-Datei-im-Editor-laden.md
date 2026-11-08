@@ -1,5 +1,7 @@
 # Story 2.4: Ausgewählte LaTeX-Datei im Editor laden
 
+> **GitHub Issue:** [#16](https://github.com/yasminshendrik/latex_on_ipad/issues/16) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Im Code umgesetzt**
 
 ## Ziel

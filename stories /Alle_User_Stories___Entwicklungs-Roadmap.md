@@ -1,5 +1,7 @@
 # User Stories, Entwicklungs-Roadmap & Statusübersicht
 
+> Veraltete historische Roadmap-Kopie. Das aktive Tracking wurde nach [GitHub Issues](https://github.com/yasminshendrik/latex_on_ipad/issues) migriert; diese Datei ist keine Statusquelle.
+
 Dieses Dokument fasst sämtliche User Stories für die **LaTeX iPad PWA** zusammen. Jede Story ist in ihre spezifischen Teilschritte unterteilt und mit ihrem aktuellen Implementierungsstand im Projektcode (`index_html.md`, `app_js.md`, `sw_js.md`) abgeglichen.
 
 ---

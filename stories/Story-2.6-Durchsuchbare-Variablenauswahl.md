@@ -1,5 +1,7 @@
 # Story 2.6: Durchsuchbare Variablenauswahl im Editor
 
+> **GitHub Issue:** [#18](https://github.com/yasminshendrik/latex_on_ipad/issues/18) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Ausstehend**
 
 ## Ziel

@@ -1,5 +1,7 @@
 # Story 6.1: Einheitliches lokales Speichern und Konfliktauflösung
 
+> **GitHub Issue:** [#26](https://github.com/yasminshendrik/latex_on_ipad/issues/26) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Umgesetzt**
 
 ## Ziel

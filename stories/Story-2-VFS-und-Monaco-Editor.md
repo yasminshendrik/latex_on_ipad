@@ -1,5 +1,7 @@
 # Story 2: Virtuelles Dateisystem (VFS) & Monaco Editor
 
+> **GitHub Issue:** [#12](https://github.com/yasminshendrik/latex_on_ipad/issues/12) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Umgesetzt**
 
 ## Ziel

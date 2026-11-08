@@ -1,5 +1,7 @@
 # Story 4.2: Responsive PDF-Vorschau
 
+> **GitHub Issue:** [#23](https://github.com/yasminshendrik/latex_on_ipad/issues/23) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel

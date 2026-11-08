@@ -1,5 +1,7 @@
 # Story 1.6: GitHub-Login mit Fine-grained Personal Access Token
 
+> **GitHub Issue:** [#8](https://github.com/yasminshendrik/latex_on_ipad/issues/8) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Abgeschlossen für den aktuellen Umfang**
 
 ## Ziel

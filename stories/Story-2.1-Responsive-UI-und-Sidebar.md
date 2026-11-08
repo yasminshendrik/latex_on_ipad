@@ -1,5 +1,7 @@
 # Story 2.1: Responsive UI & ausblendbare Sidebar
 
+> **GitHub Issue:** [#13](https://github.com/yasminshendrik/latex_on_ipad/issues/13) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Umgesetzt**
 
 ## Ziel

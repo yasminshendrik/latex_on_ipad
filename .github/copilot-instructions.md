@@ -2,22 +2,16 @@
 
 ## Anforderungen und Stories
 
-- Die Anforderungen an das Projekt und ihr jeweiliger Umsetzungsstatus werden im Ordner `stories/` dokumentiert.
-- Halte den Code stets konsistent mit dem aktuellen Status der Stories. Implementiere keine Anforderungen, die als ausstehend markiert sind, ohne die Story entsprechend zu aktualisieren.
-- Neue Anforderungen und Änderungen an Anforderungen müssen im Ordner `stories/` dokumentiert werden.
-- Anforderungen oder Änderungen an Anforderungen dürfen ausschließlich von der Nutzerin / dem Nutzer vorgegeben werden. Erfinde, ergänze oder ändere keine Produktanforderungen eigenständig.
+- GitHub Issues sind die verbindliche und alleinige Quelle für Anforderungen, Stories, Bugs, technische Aufgaben, Testlücken und Backlog-Themen.
+- Vor der Arbeit das zugehörige GitHub Issue und seinen aktuellen Status prüfen. Anforderungen, Umsetzung, Nachweise und Status im Issue aktuell halten.
+- Neue Anforderungen und Änderungen an Anforderungen müssen als GitHub Issue dokumentiert werden. Produktanforderungen dürfen ausschließlich von der Nutzerin / dem Nutzer vorgegeben werden.
+- Verwende GitHub-Issue-Typen, wenn sie im Repository verfügbar sind. In diesem persönlichen Repository ist das native Typfeld nicht zuweisbar; verwende deshalb die Labels `type:story`, `type:bug` und `type:task` zur Klassifizierung.
+- Ein offenes Issue ist nicht abgeschlossen; dazu zählen auch Backlog-Ideen und teilweise umgesetzte Arbeit. Schließe ein Issue erst nach verifizierter vollständiger Umsetzung und verwende den passenden Schließgrund (`completed`, `not planned` oder `duplicate`).
+- Issues für Stories enthalten den jeweiligen Anforderungstext und die Abnahmekriterien. Bugs enthalten Beobachtung, erwartetes Verhalten, Reproduktionsschritte, Prüfumgebung und Nachweise. Nicht reproduzierte Meldungen ausdrücklich als ungeklärt kennzeichnen.
 - Änderungen an bereits abgeschlossenen Stories werden als neue Stories dokumentiert; überschreibe oder ändere abgeschlossene Stories nicht so, dass ihre ursprüngliche Historie verloren geht.
-- Wenn in einem Commit nur ein Teil einer Story umgesetzt wird, teile die Arbeit in klar abgegrenzte Stories oder Teilschritte auf und aktualisiere deren Status passend zum tatsächlichen Stand.
-- Aktualisiere den dokumentierten Status nur entsprechend der tatsächlich im Code umgesetzten Änderungen. Nicht oder nur teilweise implementierte Arbeit darf nicht als abgeschlossen markiert werden.
-- Bei Änderungen an Code und Anforderungen sind die zugehörigen Story-Dokumente im selben Arbeitszusammenhang aktuell zu halten.
-- Aktualisiere die Story-Übersicht `stories/Alle_User_Stories___Entwicklungs-Roadmap.md` immer gemeinsam mit den betroffenen Einzel-Story-Dateien, insbesondere wenn Anforderungen, Teilschritte oder deren Status geändert werden.
-
-## Lokale Issues und Bugs
-
-- Anforderungen und ihre Umsetzung werden als Stories im Ordner `stories/` gepflegt. Bugs und sonstige nachverfolgbare Issues werden als Markdown-Dateien im Ordner `issues/` gepflegt; pro Issue gibt es eine Datei mit stabiler ID und aussagekräftigem Namen.
-- GitHub Issues sind kein Projekt-Tracking-Medium. Issues und Bugs nicht auf GitHub anlegen oder aktualisieren, sondern die passende lokale Datei erstellen oder fortschreiben und deren Pfad in der Antwort nennen.
-- Issue-Dateien enthalten mindestens Status, Beobachtung, erwartetes Verhalten, Schritte zur Reproduktion, Prüfumgebung und bisherige Nachweise. Nicht reproduzierte oder nicht verifizierte Meldungen als solche kennzeichnen und nicht als bestätigten Bug darstellen.
-- Status und Testergebnisse in der Issue-Datei nach Untersuchung oder Behebung aktualisieren. Änderungen an Produktanforderungen bleiben nutzerseitig vorgegeben und werden zusätzlich in den betroffenen Stories sowie der Roadmap dokumentiert.
+- Teile größere Vorhaben bei Bedarf in klar abgegrenzte GitHub Issues und bilde tatsächliche Abhängigkeiten über Issue-Beziehungen ab.
+- Dokumentiere den Status nur entsprechend der tatsächlich implementierten und verifizierten Änderungen. Nicht oder nur teilweise umgesetzte Arbeit darf nicht als abgeschlossen geschlossen werden.
+- Die vorhandenen Markdown-Dateien in `stories/` und `issues/` bleiben als migrierte Referenz- und Historienkopien erhalten. Sie sind kein aktives Tracking; maßgeblich sind die dort verlinkten GitHub Issues. Keine neuen lokalen Story- oder Issue-Dateien für das Projekttracking anlegen.
 
 ## Technisches Protokoll
 

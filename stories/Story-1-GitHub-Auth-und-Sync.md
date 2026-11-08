@@ -1,5 +1,7 @@
 # Story 1 & 1.1: GitHub-Authentifizierung & Repository-Synchronisation
 
+> **GitHub Issue:** [#5](https://github.com/yasminshendrik/latex_on_ipad/issues/5) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Abgeschlossen**
 
 **Story 1 und 1.1 sind geschlossen.** Der frühere GitHub-App-OAuth-Login ist „Won't do“ und wurde durch den abgeschlossenen [PAT-Login in Story 1.6](Story-1.6-Fine-grained-PAT-Login.md) ersetzt. Repository-Baum und Dateiabruf sind umgesetzt. Commit und Push gehören nicht zum Umfang dieser abgeschlossenen Stories und werden ausschließlich in [Story 1.8](Story-1.8-GitHub-Commit-und-Push.md) behandelt. Die ursprünglichen OAuth-Schritte bleiben zur Dokumentation der Historie erhalten.

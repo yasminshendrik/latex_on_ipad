@@ -1,9 +1,7 @@
 # Lokale Issues und Bugs
 
-Nachverfolgbare Issues werden hier als einzelne Markdown-Dateien geführt. GitHub Issues werden für dieses Projekt nicht verwendet.
+Die Inhalte dieses Ordners sind eine migrierte Referenzkopie. Das aktive Tracking erfolgt ausschließlich in [GitHub Issues](https://github.com/yasminshendrik/latex_on_ipad/issues); neue Bugs und Issues werden dort angelegt und aktualisiert.
 
-## Dateinamen und Inhalt
+Der frühere lokale Bug-Eintrag [ISSUE-001](ISSUE-001-sidebar-und-lokales-repository-auf-ipad.md) wurde zu [GitHub Issue #29](https://github.com/yasminshendrik/latex_on_ipad/issues/29) migriert. Die GitHub-Version ist für Status und weitere Nachweise maßgeblich.
 
-Verwende pro Issue eine stabile ID und einen kurzen, aussagekräftigen Dateinamen, zum Beispiel `ISSUE-001-kurzer-titel.md`. Halte mindestens Status, Beobachtung, erwartetes Verhalten, Reproduktionsschritte, Prüfumgebung und Nachweise fest. Kennzeichne ausdrücklich, wenn ein gemeldetes Problem noch nicht reproduziert oder verifiziert wurde.
-
-Aktualisiere den Eintrag bei neuen Erkenntnissen und nach einer Behebung. Anforderungen und deren Umsetzungsstatus gehören weiterhin in `stories/` und in die Roadmap `stories/Alle_User_Stories___Entwicklungs-Roadmap.md`.
+Weitere lokale Issue-Dateien werden nicht angelegt. Die lokalen Dateien bleiben aus Gründen der Historie und Nachvollziehbarkeit erhalten.

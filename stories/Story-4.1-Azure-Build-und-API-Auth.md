@@ -1,5 +1,7 @@
 # Story 4.1: Lokale PDF-Erzeugung
 
+> **GitHub Issue:** [#22](https://github.com/yasminshendrik/latex_on_ipad/issues/22) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Teilweise umgesetzt**
 
 ## Ziel

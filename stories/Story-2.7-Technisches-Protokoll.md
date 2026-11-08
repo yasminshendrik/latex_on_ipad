@@ -1,5 +1,7 @@
 # Story 2.7: Aussagekräftiges technisches Protokoll
 
+> **GitHub Issue:** [#19](https://github.com/yasminshendrik/latex_on_ipad/issues/19) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Ausstehend**
 
 ## Ziel

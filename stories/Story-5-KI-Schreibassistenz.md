@@ -1,5 +1,7 @@
 # Story 5: KI-Schreibassistenz für Text & Stil
 
+> **GitHub Issue:** [#24](https://github.com/yasminshendrik/latex_on_ipad/issues/24) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Ausstehend**
 
 ## Ziel

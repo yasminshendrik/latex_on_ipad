@@ -1,5 +1,7 @@
 # ISSUE-001: Sidebar und lokales Repository auf iPad
 
+**Migriert nach:** [GitHub Issue #29](https://github.com/yasminshendrik/latex_on_ipad/issues/29) — dort wird der Status weitergeführt.
+
 **Status:** Nicht reproduziert; iPad/Safari-Prüfung ausstehend  
 **Bezug:** [Story 0.5](../stories/Story-0.5-Sidebar-und-lokales-Repository.md)
 

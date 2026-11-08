@@ -1,5 +1,7 @@
 # Story 1.8: GitHub-Commit und Push beim Speichern
 
+> **GitHub Issue:** [#10](https://github.com/yasminshendrik/latex_on_ipad/issues/10) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Ausstehend**
 
 ## Ziel

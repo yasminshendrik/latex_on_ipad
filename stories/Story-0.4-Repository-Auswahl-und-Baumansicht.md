@@ -1,5 +1,7 @@
 # Story 0.4: Repository-Auswahl und Baumansicht
 
+> **GitHub Issue:** [#3](https://github.com/yasminshendrik/latex_on_ipad/issues/3) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Im Code umgesetzt**
 
 ## Ziel

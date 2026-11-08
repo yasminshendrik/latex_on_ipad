@@ -1,5 +1,7 @@
 # Story 0.5: Sidebar und lokale Projektübernahme nach GitHub-Zugriff
 
+> **GitHub Issue:** [#4](https://github.com/yasminshendrik/latex_on_ipad/issues/4) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Im Code umgesetzt; iPad/Safari ungetestet**
 
 ## Meldung

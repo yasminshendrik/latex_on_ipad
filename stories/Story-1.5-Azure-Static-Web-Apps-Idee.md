@@ -1,5 +1,7 @@
 # Story 1.5: Azure Static Web Apps als spätere Architekturidee
 
+> **GitHub Issue:** [#7](https://github.com/yasminshendrik/latex_on_ipad/issues/7) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Backlog-Idee — nicht beschlossen und nicht umgesetzt**
 
 ## Idee

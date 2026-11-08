@@ -1,5 +1,7 @@
 # Story 0: Lokale Projektübersicht & GitHub-Repository-Zugriff
 
+> **GitHub Issue:** [#2](https://github.com/yasminshendrik/latex_on_ipad/issues/2) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Umgesetzt**
 
 ## Ziel

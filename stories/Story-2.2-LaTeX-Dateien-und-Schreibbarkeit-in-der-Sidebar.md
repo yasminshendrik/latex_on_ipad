@@ -1,5 +1,7 @@
 # Story 2.2: LaTeX-Dateien und Schreibbarkeit in der Sidebar
 
+> **GitHub Issue:** [#14](https://github.com/yasminshendrik/latex_on_ipad/issues/14) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Status: Im Code umgesetzt**
 
 ## Ziel

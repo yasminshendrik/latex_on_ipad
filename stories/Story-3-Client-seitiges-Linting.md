@@ -1,5 +1,7 @@
 # Story 3: Client-seitiges Linting
 
+> **GitHub Issue:** [#20](https://github.com/yasminshendrik/latex_on_ipad/issues/20) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Abgeschlossen für den akzeptierten Umfang**
 
 ## Ziel

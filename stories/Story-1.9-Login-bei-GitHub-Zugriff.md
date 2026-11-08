@@ -1,5 +1,7 @@
 # Story 1.9: Login bei GitHub-Zugriff
 
+> **GitHub Issue:** [#11](https://github.com/yasminshendrik/latex_on_ipad/issues/11) — maßgeblicher Status und Tracking. Diese Datei bleibt als Referenzkopie erhalten.
+
 **Gesamtstatus: Ausstehend**
 
 ## Ziel
