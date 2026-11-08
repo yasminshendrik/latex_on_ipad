@@ -100,5 +100,30 @@ test('Der echte TeX-Worker bietet Babel an und unterscheidet footmisc-Suchproben
   assert.ok(offline.pdf?.byteLength > 0);
   assert.equal(offline.missingPacks.length, 0);
   assert.ok(!offline.missingFiles.includes('footmisc.sty'));
-  assert.ok(offline.diagnostics.some((item) => item.severity === 'warning' && /Silbentrennungsmuster/.test(item.message)));
+  assert.ok(!offline.diagnostics.some((item) => /Silbentrennungsmuster/.test(item.message)));
+});
+
+test('Deutsch und Englisch verwenden bei Babel-Sprachwechsel ihre eigenen Trennmuster', async () => {
+  const enginePath = path.join(root, 'js/engine');
+  const compiler = await TexEngine.load(new Uint8Array(fs.readFileSync(path.join(enginePath, 'tectonic_wasm.wasm'))));
+  compiler.addFiles(await unpackTarGz(new Uint8Array(fs.readFileSync(path.join(enginePath, 'tectonic-bundle.tar.gz')))));
+  for (const id of ['babel-nil', 'babel-ngerman']) {
+    compiler.addFiles(await unpackTarGz(new Uint8Array(fs.readFileSync(path.join(enginePath, 'packs', `pack-${id}-2024-10-24.tar.gz`)))));
+  }
+  compiler.addFile('main.tex', [
+    '\\documentclass{article}',
+    '\\usepackage[english,ngerman]{babel}',
+    '\\begin{document}',
+    '\\selectlanguage{ngerman}\\showhyphens{Silbentrennung Donaudampfschifffahrt representation}',
+    '\\selectlanguage{english}\\showhyphens{Silbentrennung Donaudampfschifffahrt representation}',
+    'Fertig.\\end{document}'
+  ].join('\n'));
+  const result = compiler.compile({ entry: 'main.tex', haltOnError: true, shellEscape: false, synctex: false });
+  assert.notEqual(result.status, 'failed', result.message);
+  assert.ok(!result.diagnostics.some((item) => item.severity === 'error'), JSON.stringify(result.diagnostics));
+  assert.ok(compiler.pdf()?.length > 0);
+  const log = compiler.log('main');
+  assert.match(log, /Sil-ben-tren-nung Do-nau-dampf-schiff-fahrt re-pre-sen-ta-ti-on/);
+  assert.match(log, /Sil-ben-tren-nung Donau-dampf-schiff-fahrt rep-re-sen-ta-tion/);
+  assert.doesNotMatch(log, /Hyphen rules for ['‘`]ngerman['’`] set to \\l@english/);
 });

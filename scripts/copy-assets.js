@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { gzipSync } = require('node:zlib');
+const { TexEngine, unpackTarGz } = require('glyphtex-engine');
 
 const root = path.join(__dirname, '..');
 const modules = path.join(root, 'node_modules');
@@ -10,6 +11,13 @@ const output = path.join(root, 'js/engine');
 const packOutput = path.join(output, 'packs');
 const komaSource = JSON.parse(fs.readFileSync(path.join(__dirname, 'koma-script-pack.json'), 'utf8'));
 const babelSource = JSON.parse(fs.readFileSync(path.join(__dirname, 'babel-packs.json'), 'utf8'));
+const hyphenSource = {
+  revision: '365ad220d93cc3bd03d103a89b061564a3891fe1',
+  files: {
+    'patterns/tex/hyph-de-1996.tex': 'e89b1b590aa609d408abb5871132ebfd43fdfbaa',
+    'loadhyph/loadhyph-de-1996.tex': '0ed889f49163db3079c4e22504d81087e07c96ce'
+  }
+};
 
 function sha256(bytes) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
@@ -102,11 +110,49 @@ async function buildBabelPacks(index, integrity) {
   }
 }
 
+async function buildEngineBundle() {
+  const files = await unpackTarGz(new Uint8Array(fs.readFileSync(path.join(engine, 'tectonic-bundle.tar.gz'))));
+  const base = `https://raw.githubusercontent.com/deepin-community/texlive-lang/${hyphenSource.revision}/texmf-dist/tex/generic/hyph-utf8`;
+  for (const [source, expectedSha] of Object.entries(hyphenSource.files)) {
+    const bytes = await fetchBytes(`${base}/${source}`);
+    if (gitBlobSha(bytes) !== expectedSha) throw new Error(`Prüfsumme der Trennmusterdatei ${source} stimmt nicht.`);
+    files.set(path.basename(source), bytes);
+  }
+  const originalLanguage = files.get('language.dat');
+  if (!originalLanguage) throw new Error('Das Engine-Bundle enthält keine language.dat.');
+  const language = new TextDecoder().decode(originalLanguage);
+  if (/^ngerman\s/m.test(language)) throw new Error('Die Sprache ngerman ist bereits im Engine-Bundle registriert.');
+  files.set('language.dat', Buffer.from(`${language}\nngerman loadhyph-de-1996.tex\n`));
+  const compiler = await TexEngine.load(new Uint8Array(fs.readFileSync(path.join(engine, 'tectonic_wasm.wasm'))));
+  compiler.addFiles(files);
+  compiler.addFile('glyphtex-format.ini', [
+    '\\let\\glyphtexdump\\dump',
+    '\\let\\dump\\relax',
+    '\\input xelatex.ini',
+    '\\ifdefined\\partokencontext\\else \\newcount\\partokencontext \\fi',
+    '\\glyphtexdump'
+  ].join('\n'));
+  const result = compiler.compile({ entry: 'glyphtex-format.ini', jobname: 'latex', initex: true, haltOnError: true });
+  const format = compiler.output('latex.fmt');
+  if (!format || result.status === 'failed' || result.status === 'errors' ||
+      result.diagnostics.some((item) => item.severity === 'error')) {
+    throw new Error(`TeX-Format mit deutschen Trennmustern konnte nicht erzeugt werden: ${result.message || result.diagnostics.map((item) => item.message).join('; ')}`);
+  }
+  files.set('latex.fmt', format);
+  const entries = [...files.entries()].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  for (const [name] of entries) {
+    if (Buffer.byteLength(name) > 100) throw new Error(`Dateiname für das TeX-Archiv ist zu lang: ${name}`);
+  }
+  const tar = Buffer.concat([...entries.map(([name, bytes]) => tarEntry(name, bytes)), Buffer.alloc(1024)]);
+  const archive = gzipSync(tar, { level: 9, mtime: 0 });
+  fs.writeFileSync(path.join(output, 'tectonic-bundle.tar.gz'), archive);
+  console.log(`TeX-Bundle mit deutschen Trennmustern (${archive.length} Bytes)`);
+}
+
 async function main() {
   fs.mkdirSync(packOutput, { recursive: true });
   const jobs = [
     ['glyphtex-engine/wasm/tectonic_wasm.wasm', 'js/engine/tectonic_wasm.wasm'],
-    ['glyphtex-engine/wasm/tectonic-bundle.tar.gz', 'js/engine/tectonic-bundle.tar.gz'],
     ['glyphtex-engine/LICENSE', 'js/engine/LICENSE-glyphtex-engine.txt'],
     ['pdfjs-dist/legacy/build/pdf.min.mjs', 'js/pdfjs/pdf.min.mjs'],
     ['pdfjs-dist/legacy/build/pdf.worker.min.mjs', 'js/pdfjs/pdf.worker.min.mjs'],
@@ -122,6 +168,7 @@ async function main() {
     console.log(`${to} (${fs.statSync(target).size} Bytes)`);
   }
 
+  await buildEngineBundle();
   const sourceIndex = JSON.parse(fs.readFileSync(path.join(engine, 'packs/packs-index.json'), 'utf8'));
   const index = {
     ...sourceIndex,

@@ -11,7 +11,12 @@ Diese Komponenten werden nicht vom Projekt selbst entwickelt. Sie werden beim Ve
 - Laut [README der Originalversion 0.1.4](https://github.com/kanakkholwal/glyphtex/blob/tex-engine-v0.1.4/packages/tex-engine/README.md#licence) stehen die TeX-Live-Pakete im Bundle unter ihren eigenen freien Lizenzen; die MIT-Angabe des Engine-Pakets ist keine pauschale Lizenzangabe für deren Inhalte.
 - Das [Build-Skript des Originals](https://github.com/kanakkholwal/glyphtex/blob/tex-engine-v0.1.4/packages/tex-engine/scripts/build-bundle.mjs) entnimmt Dateien einer lokalen TeX-Live-Installation. Das mitgelieferte [Bundle-Manifest](https://github.com/kanakkholwal/glyphtex/blob/tex-engine-v0.1.4/packages/tex-engine/bundle-manifest.json) beschreibt Paketgruppen und Dateien, aber keine vollständigen Lizenzen und Urheberangaben.
 - Das ausgelieferte Archiv enthält 1.467 Einträge; bei der Prüfung wurden keine separat benannten Lizenzdateien im Archiv gefunden. Beispielsweise enthalten `article.cls` und `amsmath.sty` LPPL-Vermerke in ihren Dateiköpfen. Andere Dateien, insbesondere Schriften und generierte Binärdateien, können eigene Lizenzen oder an anderer Stelle dokumentierte Lizenzbedingungen haben; nicht alle Lizenzangaben wurden geprüft.
-- Ein vollständiges, geprüftes Lizenz- und Herkunftsinventar für das konkrete Bundle wurde weder im untersuchten Paket noch in den genannten Originalunterlagen gefunden und hier nicht erstellt. Das Archiv wird unverändert aus dem npm-Paket kopiert. Die Recherche ist dokumentiert; sie ist keine rechtliche Bewertung oder Bestätigung, dass sämtliche Weitergabepflichten erfüllt sind.
+- Ein vollständiges, geprüftes Lizenz- und Herkunftsinventar für das ursprüngliche Bundle wurde weder im untersuchten Paket noch in den genannten Originalunterlagen gefunden und hier nicht erstellt. Das Format und die Sprachkonfiguration werden beim Build mit den unten aufgeführten deutschen Trennmustern neu erzeugt; die anderen enthaltenen Dateien stammen aus dem npm-Paket. Die Recherche ist keine rechtliche Bewertung oder Bestätigung, dass sämtliche Weitergabepflichten erfüllt sind.
+
+## Deutsche Silbentrennungsmuster
+
+- Die Dateien `hyph-de-1996.tex` und `loadhyph-de-1996.tex` stammen aus der [festgelegten TeX-Live-Revision](https://github.com/deepin-community/texlive-lang/tree/365ad220d93cc3bd03d103a89b061564a3891fe1/texmf-dist/tex/generic/hyph-utf8). Sie werden beim Build anhand ihrer Git-Blob-Prüfsummen geprüft und im Engine-Archiv mitgeliefert.
+- Die Trennmuster der Deutschsprachigen Trennmustermannschaft stehen unter der MIT-Lizenz; Urheber- und Lizenztext sind in `hyph-de-1996.tex` enthalten. Der Loader enthält den Urheberrechts- und Erlaubnisvermerk der TeX Users Group.
 
 ## KOMA-Script 3.43 (TeX Live, 2024-10-24)
 

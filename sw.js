@@ -10,7 +10,7 @@ const ASSETS = [
 ];
 
 // Große Engine-, Paket- und PDF.js-Dateien liegen in einem eigenen, versionierten Cache.
-const ASSET_CACHE = 'latex-assets-v2';
+const ASSET_CACHE = 'latex-assets-v3';
 const LARGE_ASSET = /\/js\/(engine|pdfjs)\//;
 
 function isOAuthCallback(url) {

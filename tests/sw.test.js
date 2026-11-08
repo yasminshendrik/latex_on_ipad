@@ -27,7 +27,7 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
     async put(request, response) { writes.push(request.url); cached.set(request.url, response); }
   };
   const caches = {
-    async keys() { return [currentCache, 'latex-pwa-old', 'latex-assets-v1', 'unrelated-cache']; },
+    async keys() { return [currentCache, 'latex-pwa-old', 'latex-assets-v1', 'latex-assets-v2', 'unrelated-cache']; },
     async delete(name) { deletedCaches.push(name); return true; },
     async open(name) { openedCaches.push(name); return cache; },
     async match(request) {
@@ -101,7 +101,7 @@ test('Aktivierung entfernt alte App-Caches und vorhandene OAuth-Einträge', asyn
   assert.equal(worker.cached.has(callback), false);
   assert.equal(worker.cached.has(errorCallback), false);
   assert.equal(worker.cached.has(ordinary), true);
-  assert.deepEqual(worker.deletedCaches, ['latex-pwa-old', 'latex-assets-v1']);
+  assert.deepEqual(worker.deletedCaches, ['latex-pwa-old', 'latex-assets-v1', 'latex-assets-v2']);
 });
 
 test('Gewöhnliche Navigation und Assets behalten das bestehende Cache-Verhalten', async () => {
