@@ -20,6 +20,7 @@
   const texOnlyFilter = document.getElementById('tex-only-filter');
   let sidebarItems = [];
   const collapsedFolders = new Set();
+  let previewDrag;
   const SCRIPT_URL = document.currentScript?.src || new URL('./js/app.js', location.href).href;
 
   const textarea = document.getElementById('editor');
@@ -29,13 +30,14 @@
   const mainFileSelect = document.getElementById('main-file-select');
   const previewStatus = document.getElementById('preview-status');
   const pdfPages = document.getElementById('pdf-pages');
+  const previewContainer = document.getElementById('preview-container');
+  const previewResizer = document.getElementById('preview-resize');
   const loginButton = document.getElementById('gh-login-btn');
   const loginDialog = document.getElementById('github-login-dialog');
   const loginForm = document.getElementById('github-login-form');
   const tokenInput = document.getElementById('github-token');
   const loginError = document.getElementById('github-login-error');
   const loginSubmit = document.getElementById('github-login-submit');
-  const repoLabel = document.getElementById('repo-label');
   const repoDialog = document.getElementById('repo-dialog');
   const repoCount = document.getElementById('repo-count');
   const repoError = document.getElementById('repo-error');
@@ -57,6 +59,10 @@
   const dashboardEmpty = document.getElementById('local-project-empty');
   const branchSelect = document.getElementById('branch-select');
   const fileList = document.getElementById('file-list');
+  const projectName = document.getElementById('project-name');
+  const projectBranch = document.getElementById('project-branch');
+  const projectRepoLink = document.getElementById('project-repo-link');
+  const hyphenationSelect = document.getElementById('project-hyphenation');
   let repoName = localStorage.getItem('gh_current_repo') || '';
   let branchName = localStorage.getItem('gh_current_branch') || 'main';
   let token = sessionStorage.getItem('gh_token') || '';
@@ -93,14 +99,43 @@
   let currentPdf;
   let currentPdfContext = '';
   let pdfRenderId = 0;
+  let pdfResizeTimer;
+  let previewSize = 40;
   let pdfjsPromise;
   const pendingCompiles = new Map();
   const compiledSignatures = new Map();
 
   function showError(message) { alert(message); }
   function setStatus(message) {
-    const footer = document.querySelector('footer');
-    if (footer) footer.textContent = message;
+    const status = document.getElementById('app-status') || document.querySelector('footer');
+    if (status) status.textContent = message;
+  }
+  function setButtonIcon(button, icon, label) {
+    button.setAttribute('data-icon', icon);
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+  function updateLoginButton() {
+    if (token) {
+      loginButton.textContent = 'Abmelden';
+      setButtonIcon(loginButton, '⏏', 'Von GitHub abmelden');
+      loginButton.setAttribute('data-connected', 'true');
+    } else {
+      loginButton.textContent = 'GitHub Login';
+      setButtonIcon(loginButton, '↪', 'Mit GitHub verbinden');
+      loginButton.removeAttribute('data-connected');
+    }
+  }
+  function updateProjectProperties() {
+    projectName.textContent = repoName || 'Lokales Projekt';
+    projectBranch.textContent = branchName || 'main';
+    if (repoName && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repoName)) {
+      projectRepoLink.href = `https://github.com/${repoName.split('/').map(encodeURIComponent).join('/')}`;
+      projectRepoLink.hidden = false;
+    } else {
+      projectRepoLink.removeAttribute('href');
+      projectRepoLink.hidden = true;
+    }
   }
   function fileId(repo, branch, path) { return `${repo}\u0000${branch}\u0000${path}`; }
 
@@ -213,9 +248,12 @@
   }
 
   function writeProjectCatalog(project) {
-    const projects = readProjectCatalog().filter((item) => item.id !== project.id);
-    projects.push(project);
-    localStorage.setItem('latex_ipad_projects', JSON.stringify(projects));
+    const projects = readProjectCatalog();
+    const previous = projects.find((item) => item.id === project.id);
+    const updated = { ...previous, ...project, settings: project.settings ?? previous?.settings };
+    const next = projects.filter((item) => item.id !== project.id);
+    next.push(updated);
+    localStorage.setItem('latex_ipad_projects', JSON.stringify(next));
   }
 
   function fileMetadataKey(repo, branch, path) {
@@ -277,14 +315,25 @@
   }
 
   async function storeProject(project) {
+    const catalogProject = readProjectCatalog().find((item) => item.id === project.id);
+    let storedProject;
+    try { storedProject = await readRecord('projects', project.id); }
+    catch (error) { logActivity(`Projektmetadaten konnten nicht aus IndexedDB gelesen werden: ${error.message}`); }
+    const updated = {
+      ...catalogProject,
+      ...storedProject,
+      ...project,
+      settings: project.settings ?? storedProject?.settings ?? catalogProject?.settings
+    };
     try {
-      await storeRecord('projects', project);
+      await storeRecord('projects', updated);
     } catch (error) {
-      writeProjectCatalog(project);
+      writeProjectCatalog(updated);
       setStatus(`Projektmetadaten in localStorage gespeichert; IndexedDB nicht verfügbar: ${error.message}`);
-      return;
+      return false;
     }
-    writeProjectCatalog(project);
+    writeProjectCatalog(updated);
+    return true;
   }
 
   function getEditorValue() {
@@ -366,6 +415,78 @@
   function contextKey(context) { return `${context.repo}\u0000${context.branch}`; }
   function isCurrentContext(context) { return contextKey(context) === contextKey(projectContext()); }
   function mainFileKey(context) { return `latex_ipad_main:${context.repo}:${context.branch}`; }
+  function projectSettingsKey(repo) { return `latex_ipad_settings:${repo}`; }
+  function readProjectSettings(context) {
+    const raw = localStorage.getItem(projectSettingsKey(context.repo));
+    const catalogSettings = readProjectCatalog().find((project) => project.id === context.repo)?.settings;
+    let saved = raw === null ? catalogSettings || {} : JSON.parse(raw);
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved)) {
+      throw new Error('Die lokalen Projekteinstellungen haben ein ungültiges Format.');
+    }
+    if (saved.mainFiles !== undefined && (!saved.mainFiles || typeof saved.mainFiles !== 'object' || Array.isArray(saved.mainFiles))) {
+      throw new Error('Die gespeicherten Hauptdatei-Auswahlen haben ein ungültiges Format.');
+    }
+    const mainFiles = { ...(saved.mainFiles || {}) };
+    if (Object.values(mainFiles).some((path) => typeof path !== 'string')) {
+      throw new Error('Eine gespeicherte Hauptdatei-Auswahl ist ungültig.');
+    }
+    const legacyMainFile = localStorage.getItem(mainFileKey(context));
+    if (!mainFiles[context.branch] && legacyMainFile) mainFiles[context.branch] = legacyMainFile;
+    const allowedHyphenation = ['auto', 'ngerman', 'english'];
+    if (saved.hyphenation !== undefined && !allowedHyphenation.includes(saved.hyphenation)) {
+      throw new Error('Die gespeicherte Silbentrennung ist ungültig.');
+    }
+    const hyphenation = saved.hyphenation || 'auto';
+    return { mainFiles, hyphenation };
+  }
+  async function saveProjectSettings(context, changes, quiet = false) {
+    const settings = readProjectSettings(context);
+    if (Object.prototype.hasOwnProperty.call(changes, 'mainFile')) {
+      if (typeof changes.mainFile !== 'string' || (changes.mainFile && !TEX_FILE.test(changes.mainFile))) {
+        throw new Error('Die ausgewählte Compiler-Hauptdatei ist ungültig.');
+      }
+      settings.mainFiles[context.branch] = changes.mainFile;
+    }
+    if (Object.prototype.hasOwnProperty.call(changes, 'hyphenation')) {
+      if (!['auto', 'ngerman', 'english'].includes(changes.hyphenation)) {
+        throw new Error('Die ausgewählte Silbentrennung ist ungültig.');
+      }
+      settings.hyphenation = changes.hyphenation;
+    }
+    localStorage.setItem(projectSettingsKey(context.repo), JSON.stringify(settings));
+    localStorage.removeItem(mainFileKey(context));
+    const indexedDbSaved = await storeProject({
+      id: context.repo,
+      repo: context.repo,
+      branch: context.branch,
+      settings,
+      updatedAt: Date.now()
+    });
+    logActivity('Projekteinstellungen lokal gespeichert.');
+    if (!quiet) {
+      setStatus(indexedDbSaved
+        ? 'Projekteinstellungen lokal gespeichert.'
+        : 'Projekteinstellungen lokal gespeichert; IndexedDB nicht verfügbar, localStorage wird verwendet.');
+    }
+    return settings;
+  }
+  async function migrateLegacyMainFile(context, records) {
+    const legacy = localStorage.getItem(mainFileKey(context));
+    if (!legacy) return;
+    const validPaths = records.filter((record) => !record.binary && TEX_FILE.test(record.path)).map((record) => record.path);
+    if (!validPaths.includes(legacy)) {
+      localStorage.removeItem(mainFileKey(context));
+      logActivity('Veraltete Hauptdatei-Auswahl entfernt, da die Datei im Projekt nicht mehr vorhanden ist.');
+      return;
+    }
+    const raw = localStorage.getItem(projectSettingsKey(context.repo));
+    const saved = raw === null ? null : JSON.parse(raw);
+    if (saved?.mainFiles?.[context.branch] === legacy) {
+      localStorage.removeItem(mainFileKey(context));
+      return;
+    }
+    await saveProjectSettings(context, { mainFile: legacy }, true);
+  }
   function normalizeDiagnosticFile(file) { return file ? String(file).replace(/^(\.\/)+/, '') : ''; }
 
   async function readProjectRecords(context) {
@@ -387,7 +508,8 @@
   // Die Auswahl wird pro Projekt und Branch gemerkt; ohne Auswahl wird main.tex vorgeschlagen, sofern vorhanden.
   function updateMainFileOptions(context, records) {
     const paths = records.filter((record) => !record.binary && TEX_FILE.test(record.path)).map((record) => record.path).sort();
-    const stored = localStorage.getItem(mainFileKey(context));
+    const settings = readProjectSettings(context);
+    const stored = settings.mainFiles[context.branch];
     const selected = paths.includes(stored) ? stored : paths.includes('main.tex') ? 'main.tex' : '';
     if (isCurrentContext(context)) {
       const options = [];
@@ -405,6 +527,8 @@
       }
       mainFileSelect.replaceChildren(...options);
       mainFileSelect.value = selected;
+      hyphenationSelect.value = settings.hyphenation;
+      updateProjectProperties();
     }
     return selected;
   }
@@ -420,8 +544,15 @@
       pdfPages.replaceChildren();
       applyCompileMarkers();
     }
-    try { updateMainFileOptions(context, await readProjectRecords(context)); }
-    catch (error) { setStatus(`Hauptdateien konnten nicht ermittelt werden: ${error.message}`); }
+    try {
+      const records = await readProjectRecords(context);
+      updateMainFileOptions(context, records);
+      await migrateLegacyMainFile(context, records);
+    }
+    catch (error) {
+      logActivity('Hauptdateien oder Projekteinstellungen konnten nicht ermittelt werden.');
+      setStatus(`Hauptdateien konnten nicht ermittelt werden: ${error.message}`);
+    }
   }
 
   function hashBytes(value) {
@@ -700,6 +831,10 @@
     }
     const files = {};
     for (const record of records) files[record.path] = record.binary ? record.data : record.content ?? '';
+    const settings = readProjectSettings(context);
+    if (settings.hyphenation !== 'auto' && typeof files[main] === 'string') {
+      files[main] = `\\PassOptionsToPackage{main=${settings.hyphenation}}{babel}\n${files[main]}`;
+    }
     const key = contextKey(context);
     let installedPacks = [];
     let packageStorageError;
@@ -857,6 +992,66 @@
   });
   let resizeDrag;
   const sidebarPortrait = () => window.matchMedia('(orientation: portrait)').matches;
+  function updatePreviewResizer() {
+    previewResizer.hidden = !previewVisible();
+    const portrait = sidebarPortrait();
+    previewResizer.setAttribute('aria-orientation', portrait ? 'horizontal' : 'vertical');
+    previewResizer.setAttribute('aria-valuenow', String(Math.round(previewSize)));
+  }
+  function resizePreview(value) {
+    previewSize = Math.max(20, Math.min(70, value));
+    previewContainer.style.flexBasis = `${previewSize}%`;
+    previewResizer.setAttribute('aria-valuenow', String(Math.round(previewSize)));
+    schedulePdfRender();
+  }
+  function schedulePdfRender() {
+    clearTimeout(pdfResizeTimer);
+    if (currentPdf && previewVisible()) pdfResizeTimer = setTimeout(() => {
+      if (previewVisible()) renderPdf(currentPdf);
+    }, 100);
+  }
+  function previewResizeTotal(portrait) {
+    const bounds = document.getElementById('main-container').getBoundingClientRect();
+    return portrait ? bounds.height : bounds.width;
+  }
+  previewResizer.addEventListener('pointerdown', (event) => {
+    if (previewResizer.hidden || event.button !== 0) return;
+    const portrait = sidebarPortrait();
+    previewDrag = {
+      id: event.pointerId,
+      portrait,
+      start: portrait ? event.clientY : event.clientX,
+      size: previewSize
+    };
+    previewResizer.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  previewResizer.addEventListener('pointermove', (event) => {
+    if (!previewDrag || previewDrag.id !== event.pointerId) return;
+    const coordinate = previewDrag.portrait ? event.clientY : event.clientX;
+    const start = previewDrag.start;
+    const delta = -(coordinate - start) / (previewResizeTotal(previewDrag.portrait) || 1) * 100;
+    resizePreview(previewDrag.size + delta);
+  });
+  function finishPreviewResize(event) {
+    if (!previewDrag || previewDrag.id !== event.pointerId) return;
+    previewDrag = undefined;
+    logActivity('Größe der PDF-Vorschau geändert.');
+  }
+  previewResizer.addEventListener('pointerup', finishPreviewResize);
+  previewResizer.addEventListener('pointercancel', finishPreviewResize);
+  previewResizer.addEventListener('lostpointercapture', finishPreviewResize);
+  previewResizer.addEventListener('keydown', (event) => {
+    const portrait = sidebarPortrait();
+    const increase = portrait ? 'ArrowUp' : 'ArrowLeft';
+    const decrease = portrait ? 'ArrowDown' : 'ArrowRight';
+    if (event.key !== increase && event.key !== decrease) return;
+    event.preventDefault();
+    const current = Number(previewResizer.getAttribute('aria-valuenow')) || 40;
+    resizePreview(current + (event.key === increase ? 5 : -5));
+    logActivity('Größe der PDF-Vorschau geändert.');
+  });
+  updatePreviewResizer();
   function resizeSidebar(size, portrait) {
     const bounds = document.getElementById('main-container').getBoundingClientRect();
     const minimum = portrait ? 120 : 180;
@@ -908,21 +1103,33 @@
     logActivity('Sidebar-Größe geändert.');
   });
   window.addEventListener('resize', syncResizeOrientation);
+  window.addEventListener('resize', () => {
+    updatePreviewResizer();
+    schedulePdfRender();
+  });
   syncResizeOrientation();
   texOnlyFilter.addEventListener('change', () => {
     renderSidebar();
     logActivity(`Sidebar-Dateifilter ${texOnlyFilter.checked ? 'aktiviert' : 'deaktiviert'}.`);
   });
   document.getElementById('toggle-preview').addEventListener('click', () => {
-    const container = document.getElementById('preview-container');
-    container.classList.toggle('visible');
-    if (!container.classList.contains('visible')) return;
+    previewContainer.classList.toggle('visible');
+    updatePreviewResizer();
+    if (!previewContainer.classList.contains('visible')) return;
     const context = projectContext();
     requestCompile('preview', context);
   });
   mainFileSelect.addEventListener('change', () => {
-    localStorage.setItem(mainFileKey(projectContext()), mainFileSelect.value);
+    const context = projectContext();
+    saveProjectSettings(context, { mainFile: mainFileSelect.value })
+      .catch((error) => { logActivity('Änderung der Compiler-Hauptdatei konnte nicht gespeichert werden.'); setStatus(`Projekteinstellung konnte nicht gespeichert werden: ${error.message}`); });
     requestCompile('main');
+  });
+  hyphenationSelect.addEventListener('change', () => {
+    const context = projectContext();
+    saveProjectSettings(context, { hyphenation: hyphenationSelect.value })
+      .then(() => requestCompile('main'))
+      .catch((error) => { logActivity('Änderung der Silbentrennung konnte nicht gespeichert werden.'); setStatus(`Projekteinstellung konnte nicht gespeichert werden: ${error.message}`); });
   });
   document.getElementById('save-btn').addEventListener('click', () =>
     persistCurrentFile(true).then(() => {
@@ -1362,8 +1569,9 @@
         const open = document.createElement('button');
         open.type = 'button';
         open.textContent = 'Lokal öffnen';
-        open.setAttribute('aria-label', `Lokal öffnen: ${title.textContent}`);
+        setButtonIcon(open, '↪', `Lokal öffnen: ${title.textContent}`);
         open.addEventListener('click', () => openLocalProject(project).catch((error) => {
+          logActivity('Lokales Projekt konnte nicht geöffnet werden.');
           setStatus(`Lokales Projekt konnte nicht geöffnet werden: ${error.message}`);
           showError(error.message);
         }));
@@ -1403,7 +1611,7 @@
     branchSelect.appendChild(option);
     branchSelect.value = branchName;
     branchSelect.disabled = true;
-    repoLabel.textContent = repoName || 'Lokales Projekt';
+    updateProjectProperties();
     localStorage.setItem('gh_current_repo', repoName);
     localStorage.setItem('gh_current_branch', branchName);
     const record = localRecords.find((file) => file.path === activePath);
@@ -1414,6 +1622,7 @@
     updateActiveFileButton();
     refreshMainFiles();
     showEditor();
+    logActivity('Lokales Projekt aus der Übersicht geöffnet.');
     setStatus(activeFileLoaded
       ? `Offline-Projekt geöffnet: ${repoName || 'Lokales Projekt'} (${branchName})`
       : 'Projekt lokal geöffnet. Noch keine Datei lokal gespeichert; GitHub-Inhalte werden offline nicht geladen.');
@@ -1648,7 +1857,6 @@
     logActivity('Repository wird geöffnet: Branches und Dateibaum werden geladen.');
     repositoryLoading = true;
     branchSelect.disabled = true;
-    repoLabel.disabled = true;
     const currentToken = token;
     try {
       const parts = nextRepo.split('/');
@@ -1700,7 +1908,7 @@
       activeFileLoaded = Boolean(activeFile);
       localStorage.setItem('gh_current_repo', repoName);
       localStorage.setItem('gh_current_branch', branchName);
-      repoLabel.textContent = repoName;
+      updateProjectProperties();
       branchSelect.replaceChildren(...branches.map((branch) => {
         const option = document.createElement('option'); option.value = branch.name; option.textContent = branch.name; return option;
       }));
@@ -1738,7 +1946,6 @@
     } finally {
       repositoryLoading = false;
       branchSelect.disabled = false;
-      repoLabel.disabled = false;
     }
   }
 
@@ -1759,9 +1966,11 @@
   }
 
   function updateCreateRepoButton() {
-    createRepoSubmit.textContent = pendingRepoCreation?.name === createRepoName.value.trim()
+    const label = pendingRepoCreation?.name === createRepoName.value.trim()
       ? pendingRepoCreation.initialized ? 'Repository erneut öffnen' : 'Initialisierung fortsetzen'
       : 'Privates Repository erstellen';
+    createRepoSubmit.textContent = label;
+    setButtonIcon(createRepoSubmit, pendingRepoCreation?.name === createRepoName.value.trim() ? '↻' : '＋', label);
   }
 
   createRepoName.addEventListener('input', updateCreateRepoButton);
@@ -1873,6 +2082,7 @@
               : { icon: '❔', label: 'Berechtigung unbekannt' };
         button.textContent = `${permission.icon} ${repo.full_name}`;
         button.setAttribute('aria-label', `${permission.label}: ${repo.full_name}`);
+        button.title = `${permission.label}: ${repo.full_name}`;
         button.addEventListener('click', async () => {
           if (repositoryLoading) return;
           logActivity('Repository in der Auswahl angefordert.');
@@ -1910,7 +2120,7 @@
   loginButton.addEventListener('click', () => {
     if (token) {
       if (repoDialog.open) repoDialog.close();
-      sessionStorage.removeItem('gh_token'); token = ''; loginButton.textContent = 'GitHub Login'; loginButton.style.background = '';
+      sessionStorage.removeItem('gh_token'); token = ''; updateLoginButton();
       logActivity('GitHub-Abmeldung abgeschlossen.');
       setStatus('Von GitHub abgemeldet.'); return;
     }
@@ -1957,7 +2167,7 @@
       sessionStorage.setItem('gh_token', candidate);
       token = candidate;
       logActivity('GitHub-Anmeldung erfolgreich.');
-      loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
+      updateLoginButton();
       loginDialog.close();
       setStatus('Mit GitHub verbunden.');
       await showRepositories();
@@ -1971,12 +2181,11 @@
       }
     }
   });
-  repoLabel.addEventListener('click', showRepositories);
-  document.getElementById('open-repo-btn').addEventListener('click', showRepositories);
   document.getElementById('dashboard-open-repo').addEventListener('click', showRepositories);
   document.getElementById('dashboard-create-repo').addEventListener('click', openCreateRepository);
   document.getElementById('repo-create').addEventListener('click', openCreateRepository);
   repoRetry.addEventListener('click', showRepositories);
+  projectRepoLink.addEventListener('click', () => logActivity('Repository-Link in den Projekteigenschaften geöffnet.'));
   document.getElementById('repo-cancel').addEventListener('click', () => repoDialog.close());
   repoDialog.addEventListener('close', () => {
     if (repoListRequest) repoListRequest.abort();
@@ -1997,7 +2206,9 @@
       dashboard.hidden = false;
       sidebarToggle.disabled = true;
       await refreshDashboard();
+      logActivity('Zur Projektübersicht gewechselt.');
     } catch (error) {
+      logActivity('Wechsel zur Projektübersicht fehlgeschlagen.');
       setStatus(`Änderungen konnten vor dem Wechsel zur Übersicht nicht gespeichert werden: ${error.message}`);
     }
   });
@@ -2029,11 +2240,9 @@
       await refreshDashboard();
       await loadMonaco();
       await registerServiceWorker();
-      if (repoName) repoLabel.textContent = repoName;
+      updateProjectProperties();
       branchSelect.value = branchName;
-      if (token) {
-        loginButton.textContent = 'Verbunden'; loginButton.style.background = '#28a745';
-      }
+      updateLoginButton();
       setStatus(navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.');
     } catch (error) {
       setStatus(`App-Fehler: ${error.message}`);

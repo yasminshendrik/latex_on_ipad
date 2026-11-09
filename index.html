@@ -15,6 +15,12 @@
     button, select { min-height: 36px; border: 0; border-radius: 5px; padding: 7px 12px; background: #007acc; color: #fff; font-size: 14px; cursor: pointer; }
     select { background: #3c3c3c; }
     button:active { background: #005999; }
+    button[data-icon] { width: 42px; min-width: 42px; padding: 7px; overflow: hidden; color: transparent; font-size: 0; }
+    button[data-icon]::before { content: attr(data-icon); display: inline-block; color: #fff; font: 20px/1 "Segoe UI Symbol", "Apple Symbols", sans-serif; }
+    button[data-icon]:focus-visible { outline: 2px solid #50b6ff; outline-offset: 2px; }
+    button[data-connected="true"] { background: #238636; }
+    button.file-select-button::before { content: '▤'; margin-right: 6px; color: #b7e3ff; font: 15px/1 "Segoe UI Symbol", "Apple Symbols", sans-serif; }
+    button.file-select-button { font-size: 14px; }
     #main-container { flex: 1; min-height: 0; display: flex; position: relative; }
     #main-container[hidden], #dashboard[hidden] { display: none; }
     #dashboard { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
@@ -31,7 +37,6 @@
     #sidebar-resize::after { content: ''; position: absolute; top: 50%; right: 5px; width: 3px; height: 36px; border-radius: 2px; background: #888; transform: translateY(-50%); }
     #sidebar-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
     .sidebar-heading { padding: 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
-    #repo-label { float: right; min-height: 0; padding: 0; color: #50b6ff; background: transparent; font-size: inherit; }
     #file-list { overflow: auto; flex: 1; }
     .file-item { padding: 4px 8px; overflow-wrap: anywhere; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
@@ -41,6 +46,13 @@
     .file-readonly { padding: 4px; color: #aaa; }
     .file-tree, .file-tree ul { margin: 0; padding-left: 20px; list-style: none; }
     .file-tree { padding-left: 0; }
+    #project-properties { flex: 0 0 auto; max-height: 42%; overflow: auto; border-top: 1px solid #444; background: #202021; }
+    #project-properties summary { padding: 10px 12px; color: #ddd; cursor: pointer; }
+    #project-properties-content { padding: 0 12px 12px; font-size: 12px; }
+    #project-properties-content > label { display: block; margin-top: 10px; color: #bbb; }
+    #project-properties-content select { width: 100%; margin-top: 4px; font-size: 12px; }
+    #project-properties-content p { margin: 6px 0; overflow-wrap: anywhere; }
+    #project-repo-link { display: inline-block; margin: 4px 0; color: #8bcfff; overflow-wrap: anywhere; }
     #editor-container { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
     #editor-surface { flex: 1; min-height: 0; position: relative; }
     #editor { width: 100%; height: 100%; resize: none; padding: 16px; border: 0; outline: 0; background: #1e1e1e; color: #ddd; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; tab-size: 2; }
@@ -48,10 +60,14 @@
     #lint-results { flex: 0 0 auto; max-height: 20%; overflow: auto; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
     #lint-results ul { margin: 4px 0; padding-left: 20px; }
     #compile-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
-    #preview-container { display: none; width: 40%; overflow: auto; padding: 16px; color: #222; background: #fff; }
+    #preview-container { display: none; flex: 0 0 var(--preview-size, 40%); min-width: 0; overflow: auto; padding: 16px; color: #222; background: #fff; }
     #preview-status { margin: 4px 0 12px; color: #444; font-size: 13px; }
     #pdf-pages canvas { display: block; margin: 0 auto 12px; border: 1px solid #ccc; background: #fff; }
     #preview-container.visible { display: block; }
+    #preview-resize { flex: 0 0 16px; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; background: #2d2d2d; }
+    #preview-resize[hidden] { display: none; }
+    #preview-resize::after { content: ''; width: 3px; height: 36px; border-radius: 2px; background: #888; }
+    #preview-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
     #github-login-dialog, #repo-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
     #github-login-dialog::backdrop, #repo-dialog::backdrop { background: rgba(0, 0, 0, .75); }
     #github-login-dialog label { display: block; margin-top: 12px; }
@@ -75,7 +91,9 @@
     #log-panel { flex: 0 0 auto; max-height: 25vh; overflow: auto; padding: 8px 10px; color: #ddd; background: #181818; border-top: 1px solid #444; }
     #log-panel[hidden] { display: none; }
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
-    footer { flex: 0 0 auto; padding: 5px 10px; text-align: right; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
+    footer { flex: 0 0 auto; min-height: 46px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
+    #footer-actions { display: flex; gap: 6px; }
+    #app-status { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
     @media (orientation: portrait) {
       header { justify-content: flex-start; }
       #main-container { flex-direction: column; }
@@ -83,23 +101,24 @@
       #sidebar.collapsed { width: 100%; height: 0; flex-basis: 0; }
       #sidebar-resize { right: 0; top: auto; bottom: 0; width: 100%; height: 16px; cursor: row-resize; }
       #sidebar-resize::after { top: auto; right: auto; bottom: 5px; left: 50%; width: 36px; height: 3px; transform: translateX(-50%); }
-      #preview-container { width: 100%; height: 40%; }
+      #preview-container { width: auto; height: auto; }
+      #preview-resize { flex-basis: 16px; cursor: row-resize; }
+      #preview-resize::after { width: 36px; height: 3px; }
+      footer { flex-wrap: wrap; }
+      #app-status { flex-basis: 100%; order: 1; }
     }
   </style>
 </head>
 <body>
   <header>
     <div class="toolbar-group">
-      <button id="toggle-sidebar" type="button" disabled>☰ Sidebar</button>
-      <button id="gh-login-btn" type="button">GitHub Login</button>
-      <button id="open-dashboard" type="button">Übersicht</button>
-      <button id="open-repo-btn" type="button">GitHub-Repo öffnen</button>
+      <button id="toggle-sidebar" type="button" disabled data-icon="☰" aria-label="Sidebar umschalten" title="Sidebar umschalten">Sidebar umschalten</button>
+      <button id="open-dashboard" type="button" data-icon="⌂" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
       <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
     </div>
     <div class="toolbar-group">
-      <button id="toggle-preview" type="button">Vorschau</button>
-      <button id="toggle-log" type="button" aria-controls="technical-log" aria-expanded="false">Log</button>
-      <button id="save-btn" type="button">Speichern</button>
+      <button id="toggle-preview" type="button" data-icon="▣" aria-label="Vorschau umschalten" title="Vorschau umschalten">Vorschau</button>
+      <button id="save-btn" type="button" data-icon="⬇" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
     </div>
   </header>
   <section id="dashboard" aria-labelledby="dashboard-title">
@@ -107,8 +126,8 @@
       <h1 id="dashboard-title">Lokale Projekte</h1>
       <p>Gespeicherte Projekte können ohne Internetverbindung weiterbearbeitet werden. GitHub-Zugriff ist separat und benötigt eine Verbindung.</p>
       <div id="dashboard-actions">
-        <button id="dashboard-open-repo" type="button">GitHub-Repository öffnen</button>
-        <button id="dashboard-create-repo" type="button">Neues GitHub-Repository</button>
+        <button id="dashboard-open-repo" type="button" data-icon="↗" aria-label="GitHub-Repository öffnen" title="GitHub-Repository öffnen">GitHub-Repository öffnen</button>
+        <button id="dashboard-create-repo" type="button" data-icon="＋" aria-label="Neues GitHub-Repository erstellen" title="Neues GitHub-Repository erstellen">Neues GitHub-Repository</button>
       </div>
       <p id="local-project-empty" role="status">Lokale Projekte werden geladen…</p>
       <div id="local-project-list"></div>
@@ -116,9 +135,25 @@
   </section>
   <main id="main-container" hidden>
     <aside id="sidebar">
-      <div class="sidebar-heading">PROJEKTDATEIEN <button id="repo-label" type="button" title="Projekt wechseln">Repo wählen</button></div>
+      <div class="sidebar-heading">PROJEKTDATEIEN</div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
+      <details id="project-properties">
+        <summary>Projekteigenschaften</summary>
+        <div id="project-properties-content">
+          <p>Projekt: <strong id="project-name">Lokales Projekt</strong></p>
+          <p>Branch: <span id="project-branch">main</span></p>
+          <a id="project-repo-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Repository auf GitHub öffnen</a>
+          <label for="main-file-select">Compiler-Hauptdatei</label>
+          <select id="main-file-select"><option value="">main.tex</option></select>
+          <label for="project-hyphenation">Silbentrennung</label>
+          <select id="project-hyphenation">
+            <option value="auto">Automatisch anhand des Dokuments</option>
+            <option value="ngerman">Deutsch (ngerman)</option>
+            <option value="english">Englisch (english)</option>
+          </select>
+        </div>
+      </details>
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <section id="editor-container">
@@ -128,11 +163,10 @@
       </div>
       <div id="lint-results" role="status" aria-live="polite">LaTeX-Prüfung wird gestartet…</div>
       <div id="compile-bar">
-        <label for="main-file-select">Hauptdatei</label>
-        <select id="main-file-select"><option value="">main.tex</option></select>
         <span id="compile-summary">Kompilierung noch nicht gelaufen.</span>
       </div>
     </section>
+    <div id="preview-resize" role="separator" aria-label="Größe der PDF-Vorschau ändern" aria-controls="preview-container" aria-orientation="vertical" aria-valuemin="20" aria-valuemax="70" aria-valuenow="40" tabindex="0" hidden></div>
     <section id="preview-container" aria-label="PDF-Vorschau">
       <h3>PDF-Vorschau</h3>
       <p id="preview-status" role="status">Noch keine Vorschau.</p>
@@ -149,8 +183,8 @@
       <p>Das Token bleibt bis zur Abmeldung oder zum Ende der Sitzung im Sitzungsspeicher dieser App.</p>
       <p id="github-login-error" role="alert"></p>
       <div class="login-actions">
-        <button id="github-login-submit" type="submit">Verbinden</button>
-        <button id="github-login-cancel" type="button">Abbrechen</button>
+        <button id="github-login-submit" type="submit" data-icon="↔" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">Verbinden</button>
+        <button id="github-login-cancel" type="button" data-icon="×" aria-label="Anmeldung abbrechen" title="Anmeldung abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
@@ -160,9 +194,9 @@
     <p id="repo-error" role="alert"></p>
     <div id="repo-list"></div>
     <div class="login-actions">
-      <button id="repo-create" type="button">Neues Repository erstellen</button>
-      <button id="repo-retry" type="button" hidden>Erneut laden</button>
-      <button id="repo-cancel" type="button">Schließen</button>
+      <button id="repo-create" type="button" data-icon="＋" aria-label="Neues Repository erstellen" title="Neues Repository erstellen">Neues Repository erstellen</button>
+      <button id="repo-retry" type="button" data-icon="↻" aria-label="Repositories erneut laden" title="Repositories erneut laden" hidden>Erneut laden</button>
+      <button id="repo-cancel" type="button" data-icon="×" aria-label="Repository-Auswahl schließen" title="Repository-Auswahl schließen">Schließen</button>
     </div>
   </dialog>
   <dialog id="create-repo-dialog" aria-labelledby="create-repo-title">
@@ -176,8 +210,8 @@
       <p id="create-repo-status" role="status"></p>
       <p id="create-repo-error" role="alert"></p>
       <div class="login-actions">
-        <button id="create-repo-submit" type="submit">Privates Repository erstellen</button>
-        <button id="create-repo-cancel" type="button">Abbrechen</button>
+        <button id="create-repo-submit" type="submit" data-icon="＋" aria-label="Privates Repository erstellen" title="Privates Repository erstellen">Privates Repository erstellen</button>
+        <button id="create-repo-cancel" type="button" data-icon="×" aria-label="Erstellung abbrechen" title="Erstellung abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
@@ -187,12 +221,18 @@
     <pre id="sync-conflict-local"></pre>
     <pre id="sync-conflict-remote"></pre>
     <div class="login-actions">
-      <button id="sync-conflict-keep-local" type="button">Lokale Version</button>
-      <button id="sync-conflict-use-remote" type="button">Online-Version</button>
-      <button id="sync-conflict-merge" type="button">Merge</button>
+      <button id="sync-conflict-keep-local" type="button" data-icon="⌂" aria-label="Lokale Version verwenden" title="Lokale Version verwenden">Lokale Version</button>
+      <button id="sync-conflict-use-remote" type="button" data-icon="☁" aria-label="Online-Version verwenden" title="Online-Version verwenden">Online-Version</button>
+      <button id="sync-conflict-merge" type="button" data-icon="⇄" aria-label="Änderungen zusammenführen" title="Änderungen zusammenführen">Merge</button>
     </div>
   </dialog>
-  <footer>Offline-Editor wird initialisiert…</footer>
+  <footer>
+    <div id="footer-actions">
+      <button id="gh-login-btn" type="button" data-icon="↪" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
+      <button id="toggle-log" type="button" data-icon="☷" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
+    </div>
+    <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>
+  </footer>
   <script src="js/build-info.js"></script>
   <script src="js/diagnostic.js"></script>
   <script src="js/app.js"></script>

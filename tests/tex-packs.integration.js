@@ -144,3 +144,28 @@ test('Deutsch und Englisch verwenden bei Babel-Sprachwechsel ihre eigenen Trennm
   assert.match(log, /Sil-ben-tren-nung Donau-dampf-schiff-fahrt rep-re-sen-ta-tion/);
   assert.doesNotMatch(log, /Hyphen rules for ['‘`]ngerman['’`] set to \\l@english/);
 });
+
+test('Projektvorgabe kann die Babel-Hauptsprache vor der Dokumentklasse übersteuern', async () => {
+  const enginePath = path.join(root, 'js/engine');
+  const compiler = await TexEngine.load(new Uint8Array(fs.readFileSync(path.join(enginePath, 'tectonic_wasm.wasm'))));
+  compiler.addFiles(await unpackTarGz(new Uint8Array(fs.readFileSync(path.join(enginePath, 'tectonic-bundle.tar.gz')))));
+  const index = JSON.parse(fs.readFileSync(path.join(enginePath, 'packs/packs-index.json'), 'utf8'));
+  for (const id of ['babel-nil', 'babel-ngerman']) {
+    const pack = index.packs.find((item) => item.id === id);
+    compiler.addFiles(await unpackTarGz(new Uint8Array(fs.readFileSync(path.join(enginePath, 'packs', `pack-${id}-${pack.hash}.tar.gz`)))));
+  }
+  compiler.addFile('main.tex', [
+    '\\PassOptionsToPackage{main=english}{babel}',
+    '\\documentclass{article}',
+    '\\usepackage[ngerman]{babel}',
+    '\\begin{document}',
+    '\\showhyphens{Silbentrennung Donaudampfschifffahrt representation}',
+    'Fertig.\\end{document}'
+  ].join('\n'));
+  const result = compiler.compile({ entry: 'main.tex', haltOnError: false, shellEscape: false, synctex: false });
+  assert.notEqual(result.status, 'failed', result.message);
+  assert.ok(compiler.pdf()?.length > 0);
+  const log = compiler.log('main');
+  assert.match(log, /Main language set to 'english'/);
+  assert.match(log, /Sil-ben-tren-nung Donau-dampf-schiff-fahrt rep-re-sen-ta-tion/);
+});

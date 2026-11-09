@@ -10,15 +10,16 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
-  'repo-label', 'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
+  'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
-  'open-repo-btn', 'dashboard-open-repo', 'dashboard-create-repo', 'sync-conflict-dialog',
+  'dashboard-open-repo', 'dashboard-create-repo', 'sync-conflict-dialog',
   'sync-conflict-description', 'sync-conflict-local', 'sync-conflict-remote',
   'sync-conflict-keep-local', 'sync-conflict-use-remote', 'sync-conflict-merge',
-  'compile-summary', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container'];
+  'compile-summary', 'main-file-select', 'preview-status', 'pdf-pages', 'preview-container', 'preview-resize',
+  'project-name', 'project-branch', 'project-repo-link', 'project-hyphenation', 'app-status'];
 
 function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, indexedDBInstance, confirmImpl, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
@@ -51,6 +52,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
       replaceChildren(...children) { this.children = children; },
       getContext() { return {}; },
       setAttribute(name, value) { this.attributes[name] = value; },
+      getAttribute(name) { return this.attributes[name] ?? null; },
       getBoundingClientRect() { return { width: 800, height: 600 }; },
       setPointerCapture() {},
       removeAttribute(name) { delete this.attributes[name]; }
@@ -73,7 +75,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   conflictDialog.close = () => { conflictDialog.open = false; };
   elements['github-login-form'].reset = () => { elements['github-token'].value = ''; };
   elements['create-repo-form'].reset = () => {};
-  const footer = { textContent: '' };
+  const footer = elements['app-status'];
   const location = new URL(locationHref);
   let replacement;
   const intervals = [];
@@ -225,11 +227,12 @@ test('Gültiges Token wird geprüft, nur für die Sitzung gespeichert und bei Ab
   assert.equal(app.values.get('gh_token'), 'github_pat_test123');
   assert.equal(app.elements['github-token'].value, '');
   assert.equal(app.elements['github-login-dialog'].open, false);
-  assert.equal(app.elements['gh-login-btn'].textContent, 'Verbunden');
+  assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Von GitHub abmelden');
+  assert.equal(app.elements['gh-login-btn'].textContent, 'Abmelden');
   assert.equal(app.elements['repo-dialog'].open, true);
   app.elements['gh-login-btn'].handlers.click();
   assert.equal(app.values.has('gh_token'), false);
-  assert.equal(app.elements['gh-login-btn'].textContent, 'GitHub Login');
+  assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Mit GitHub verbinden');
 });
 
 test('Passwort oder anderes Tokenformat wird ohne Netzwerkzugriff abgewiesen', async () => {
@@ -298,7 +301,9 @@ test('Repository-Auswahl zählt alle Seiten und zeigt einen hierarchischen Baum 
   assert.equal(app.elements['repo-list'].children.length, 2);
   await app.elements['repo-list'].children[1].handlers.click();
   assert.equal(app.elements['repo-dialog'].open, false);
-  assert.equal(app.elements['repo-label'].textContent, 'alice/two');
+  assert.equal(app.elements['project-name'].textContent, 'alice/two');
+  assert.equal(app.elements['project-repo-link'].href, 'https://github.com/alice/two');
+  assert.equal(app.elements['project-repo-link'].hidden, false);
   assert.equal(app.localValues.get('gh_current_branch'), 'dev');
   const project = app.elements['file-list'].children[0].children[0];
   assert.match(project.children[0].textContent, /alice\/two/);
@@ -551,7 +556,8 @@ test('Beim Wiederöffnen lassen sich parallele lokale und Online-Änderungen zus
   await app.elements['save-btn'].handlers.click();
   remoteContent = 'Lokal: alt\nGemeinsam: alt\nOnline: geändert';
   remoteSha = 'remote-sha';
-  await app.elements['repo-label'].handlers.click();
+  await app.elements['open-dashboard'].handlers.click();
+  await app.elements['dashboard-open-repo'].handlers.click();
   const opening = app.elements['repo-list'].children[0].handlers.click();
   for (let attempt = 0; attempt < 10 && !app.elements['sync-conflict-dialog'].open; attempt += 1) {
     await new Promise((resolve) => setImmediate(resolve));
@@ -695,8 +701,23 @@ test('Ohne main.tex wird keine Datei geraten; die Auswahl wird pro Projekt gemer
   app.elements['main-file-select'].value = 'b.tex';
   app.elements['main-file-select'].handlers.change();
   await tick();
-  assert.equal(app.localValues.get('latex_ipad_main:local:main'), 'b.tex');
+  assert.equal(JSON.parse(app.localValues.get('latex_ipad_settings:local')).mainFiles.main, 'b.tex');
+  assert.equal(app.localValues.has('latex_ipad_main:local:main'), false);
   assert.equal(tex().requests[0].entry, 'b.tex');
+});
+
+test('Projektbezogene Silbentrennung wird lokal gespeichert und bei der Kompilierung überschrieben', async () => {
+  const { app, tex, tick } = await texWorkerSetup({
+    'latex_ipad_document:local:main:main.tex': '\\documentclass{article}\n\\usepackage[ngerman]{babel}'
+  });
+  app.elements['project-hyphenation'].value = 'english';
+  app.elements['project-hyphenation'].handlers.change();
+  await tick();
+  await tick();
+  const settings = JSON.parse(app.localValues.get('latex_ipad_settings:local'));
+  assert.equal(settings.hyphenation, 'english');
+  assert.match(tex().requests[0].files['main.tex'], /^\\PassOptionsToPackage\{main=english\}\{babel\}\n/);
+  assert.match(app.footer.textContent, /Projekteinstellungen lokal gespeichert/);
 });
 
 test('Fehler des TeX-Workers werden angezeigt und nicht als Vorschau ausgegeben', async () => {
@@ -959,6 +980,14 @@ test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Berei
   assert.match(pdfjs.GlobalWorkerOptions.workerSrc, /pdf\.worker\.min\.mjs$/);
   assert.equal(destroyed, true);
   assert.match(app.elements['preview-status'].textContent, /Vorschau von main\.tex/);
+  app.elements['preview-resize'].handlers.pointerdown({
+    button: 0, pointerId: 9, clientX: 600, clientY: 0,
+    preventDefault() {}
+  });
+  app.elements['preview-resize'].handlers.pointermove({ pointerId: 9, clientX: 520, clientY: 0 });
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  await tick();
+  assert.equal(rendered.length, 4);
 });
 
 test('Binäre Remote-Dateien bleiben byteweise erhalten, Text wird weiterhin dekodiert', async () => {
@@ -1003,7 +1032,7 @@ test('Ein leeres Repository wird ohne Baumabfrage geöffnet', async () => {
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
   assert.match(app.elements['file-list'].children[0].children[0].children[0].textContent, /alice\/empty/);
-  assert.equal(app.elements['repo-label'].textContent, 'alice/empty');
+  assert.equal(app.elements['project-name'].textContent, 'alice/empty');
 });
 
 test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline', async () => {
@@ -1029,9 +1058,49 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
   assert.match(html, /button, select \{ min-height: 36px;/);
   assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
-  assert.match(html, /#preview-container \{ display: none; width: 40%;/);
+  assert.match(html, /#preview-container \{ display: none; flex: 0 0 var\(--preview-size, 40%\);/);
+  assert.match(html, /id="preview-resize" role="separator"[^>]*aria-valuemin="20"[^>]*aria-valuemax="70"/);
   assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ width: 100%; height: min\(var\(--sidebar-height/);
-  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#preview-container \{ width: 100%; height: 40%; \}/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#preview-resize \{ flex-basis: 16px; cursor: row-resize; \}/);
+});
+
+test('PDF-Vorschau lässt sich mit Touch-Zieher und Tastatur anpassen', async () => {
+  const app = setup();
+  assert.equal(app.elements['preview-resize'].hidden, true);
+  await app.elements['toggle-preview'].handlers.click();
+  const resizer = app.elements['preview-resize'];
+  assert.equal(resizer.hidden, false);
+  assert.equal(resizer.attributes['aria-orientation'], 'vertical');
+  resizer.handlers.pointerdown({
+    button: 0, pointerId: 7, clientX: 600, clientY: 0,
+    preventDefault() {}
+  });
+  resizer.handlers.pointermove({ pointerId: 7, clientX: 520, clientY: 0 });
+  assert.equal(app.elements['preview-container'].style.flexBasis, '50%');
+  assert.equal(resizer.attributes['aria-valuenow'], '50');
+  resizer.handlers.pointerup({ pointerId: 7 });
+  let prevented = false;
+  resizer.handlers.keydown({ key: 'ArrowRight', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(app.elements['preview-container'].style.flexBasis, '45%');
+  await app.elements['toggle-preview'].handlers.click();
+  assert.equal(resizer.hidden, true);
+});
+
+test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protokoll stehen in der Fußzeile', () => {
+  const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
+  const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)[1];
+  assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
+  assert.match(footer, /id="gh-login-btn"[^>]*data-icon/);
+  assert.match(footer, /id="toggle-log"[^>]*data-icon/);
+  assert.doesNotMatch(html, /id="repo-label"/);
+  assert.match(html, /id="dashboard-open-repo"/);
+  assert.match(html, /<details id="project-properties">[\s\S]*id="project-repo-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
+  for (const [, attributes] of html.matchAll(/<button\b([^>]*)>/g)) {
+    assert.match(attributes, /data-icon=/);
+    assert.match(attributes, /aria-label=/);
+  }
+  assert.match(html, /button\[data-icon\]::before \{ content: attr\(data-icon\)/);
 });
 
 test('Remote-Projekt erscheint nach dem Öffnen lokal und lässt sich mit IndexedDB offline wieder öffnen', async () => {
@@ -1125,7 +1194,7 @@ test('Neues privates Repository wird erstellt und mit main.tex initialisiert', a
   });
   assert.equal(Buffer.from(JSON.parse(fileRequest.options.body).content, 'base64').toString('utf8'),
     '\\documentclass{article}\n\\begin{document}\n\\section{Einleitung}\nBitte mit GitHub verbinden, um zu starten!\n\\end{document}');
-  assert.equal(app.elements['repo-label'].textContent, 'alice/new-project');
+  assert.equal(app.elements['project-name'].textContent, 'alice/new-project');
   assert.equal(app.elements['main-container'].hidden, false);
   assert.equal(app.elements['create-repo-dialog'].open, false);
   assert.match(app.footer.textContent, /Privates Repository erstellt/);
@@ -1161,5 +1230,5 @@ test('Fehler bei main.tex lässt die Repository-Erstellung später fortsetzen', 
   assert.equal(app.requests.filter((request) => request.url.endsWith('/user/repos') && request.options.method === 'POST').length, 1);
   assert.equal(contentAttempts, 2);
   assert.equal(app.elements['create-repo-dialog'].open, false);
-  assert.equal(app.elements['repo-label'].textContent, 'alice/retry-project');
+  assert.equal(app.elements['project-name'].textContent, 'alice/retry-project');
 });

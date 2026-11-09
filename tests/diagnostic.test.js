@@ -26,6 +26,8 @@ function setup() {
   const panel = {};
   const sessionValues = new Map();
   const copied = [];
+  const timers = new Map();
+  let nextTimerId = 0;
   const document = {
     readyState: 'complete',
     body: {
@@ -51,9 +53,11 @@ function setup() {
     removeItem: (key) => sessionValues.delete(key)
   };
   vm.runInNewContext(source, {
-    document, window, sessionStorage, navigator, URL, Date, MutationObserver: undefined
+    document, window, sessionStorage, navigator, URL, Date, MutationObserver: undefined,
+    setTimeout(callback, delay) { const id = ++nextTimerId; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); }
   });
-  return { document, window, navigator, toggle, panel: panel.element, sessionValues, copied };
+  return { document, window, navigator, toggle, panel: panel.element, sessionValues, copied, timers };
 }
 
 test('Vorhandenes Diagnoseprotokoll ist standardmäßig verborgen und ein-/ausblendbar', () => {
@@ -90,7 +94,19 @@ test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funk
 
   assert.equal(app.copied[0].command, 'copy');
   assert.match(app.copied[0].text, /Diagnoseprotokoll gestartet/);
-  assert.equal(message.textContent, 'Protokoll kopiert.');
+  assert.equal(message.textContent, '');
+  assert.equal(copyButton.attributes['data-icon'], '✓');
+  assert.equal(copyButton.attributes['aria-label'], 'Protokoll kopiert');
+  const firstTimerId = [...app.timers.keys()][0];
+  await copyButton.handlers.click();
+  assert.equal(app.timers.has(firstTimerId), false);
+  assert.equal(copyButton.attributes['data-icon'], '✓');
+  const [timerId, feedback] = [...app.timers.entries()][0];
+  assert.equal(feedback.delay, 1500);
+  feedback.callback();
+  assert.equal(app.timers.has(timerId), false);
+  assert.equal(copyButton.attributes['data-icon'], '▣');
+  assert.equal(copyButton.attributes['aria-label'], 'Aktuelles Protokoll kopieren');
 
   const clearButton = heading.children.find((child) => child.textContent === 'Leeren');
   clearButton.handlers.click();
@@ -124,6 +140,7 @@ test('Reiter und Fehlerverweis schalten um; Kopieren und Leeren betreffen nur de
   assert.equal(app.sessionValues.has('latex_pwa_diagnostic_log'), true);
   await copy.handlers.click();
   assert.equal(heading.children.find((child) => child.id === 'technical-log-message').textContent, 'Kein Inhalt zum Kopieren.');
+  assert.equal(copy.attributes['aria-label'], 'Aktuelles Protokoll kopieren');
 
   app.window.__setCompilerLog('Neuer Compiler-Fehler');
   general.handlers.click();
