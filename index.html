@@ -36,7 +36,8 @@
     #sidebar-resize { position: absolute; z-index: 1; right: 0; top: 0; width: 16px; height: 100%; cursor: col-resize; touch-action: none; }
     #sidebar-resize::after { content: ''; position: absolute; top: 50%; right: 5px; width: 3px; height: 36px; border-radius: 2px; background: #888; transform: translateY(-50%); }
     #sidebar-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
-    .sidebar-heading { padding: 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
+    .sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
+    .sidebar-heading button { flex: 0 0 auto; }
     #file-list { overflow: auto; flex: 1; }
     .file-item { padding: 4px 8px; overflow-wrap: anywhere; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
@@ -68,8 +69,8 @@
     #preview-resize[hidden] { display: none; }
     #preview-resize::after { content: ''; width: 3px; height: 36px; border-radius: 2px; background: #888; }
     #preview-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
-    #github-login-dialog, #repo-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
-    #github-login-dialog::backdrop, #repo-dialog::backdrop { background: rgba(0, 0, 0, .75); }
+    #github-login-dialog, #repo-dialog, #create-repo-dialog, #new-tex-file-dialog, #commit-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
+    #github-login-dialog::backdrop, #repo-dialog::backdrop, #create-repo-dialog::backdrop, #new-tex-file-dialog::backdrop, #commit-dialog::backdrop { background: rgba(0, 0, 0, .75); }
     #github-login-dialog label { display: block; margin-top: 12px; }
     #github-login-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
     #github-login-dialog a { color: #8bcfff; }
@@ -78,13 +79,13 @@
     #repo-list { display: grid; gap: 6px; max-height: 45vh; overflow-y: auto; margin: 12px 0; }
     #repo-list button { width: 100%; text-align: left; overflow-wrap: anywhere; }
     #repo-error { color: #ffaaaa; }
-    #create-repo-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
-    #create-repo-dialog::backdrop { background: rgba(0, 0, 0, .75); }
-    #create-repo-dialog label { display: block; margin-top: 12px; }
-    #create-repo-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
+    #create-repo-dialog label, #new-tex-file-dialog label, #commit-dialog label { display: block; margin-top: 12px; }
+    #create-repo-dialog input, #new-tex-file-dialog input, #new-tex-file-dialog select, #commit-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
     #create-repo-dialog input[type="checkbox"] { display: inline-block; width: auto; min-height: auto; margin-right: 8px; }
     #create-repo-error { min-height: 1.4em; color: #ffaaaa; }
     #create-repo-status { color: #aaa; }
+    #new-tex-file-error, #commit-error { min-height: 1.4em; color: #ffaaaa; }
+    #commit-dialog p { color: #bbb; }
     #sync-conflict-dialog { width: min(680px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
     #sync-conflict-dialog::backdrop { background: rgba(0, 0, 0, .75); }
     #sync-conflict-dialog pre { max-height: 32vh; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; background: #1e1e1e; }
@@ -135,7 +136,7 @@
   </section>
   <main id="main-container" hidden>
     <aside id="sidebar">
-      <div class="sidebar-heading">PROJEKTDATEIEN</div>
+      <div class="sidebar-heading"><span>PROJEKTDATEIEN</span><button id="add-tex-file" type="button" disabled data-icon="＋" aria-label="Neue TeX-Datei anlegen" title="Neue TeX-Datei anlegen">Neue TeX-Datei</button></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
       <details id="project-properties">
@@ -225,6 +226,33 @@
       <button id="sync-conflict-use-remote" type="button" data-icon="☁" aria-label="Online-Version verwenden" title="Online-Version verwenden">Online-Version</button>
       <button id="sync-conflict-merge" type="button" data-icon="⇄" aria-label="Änderungen zusammenführen" title="Änderungen zusammenführen">Merge</button>
     </div>
+  </dialog>
+  <dialog id="new-tex-file-dialog" aria-labelledby="new-tex-file-title">
+    <h2 id="new-tex-file-title">Neue TeX-Datei</h2>
+    <form id="new-tex-file-form">
+      <label for="new-tex-file-folder">Projektordner</label>
+      <select id="new-tex-file-folder"></select>
+      <label for="new-tex-file-name">Dateiname</label>
+      <input id="new-tex-file-name" name="name" required maxlength="255" autocomplete="off" placeholder="kapitel.tex">
+      <p id="new-tex-file-error" role="alert"></p>
+      <div class="login-actions">
+        <button id="new-tex-file-submit" type="submit" data-icon="＋" aria-label="TeX-Datei anlegen" title="TeX-Datei anlegen">Anlegen</button>
+        <button id="new-tex-file-cancel" type="button" data-icon="×" aria-label="Datei anlegen abbrechen" title="Datei anlegen abbrechen">Abbrechen</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="commit-dialog" aria-labelledby="commit-title">
+    <h2 id="commit-title">Änderungen in GitHub speichern</h2>
+    <p>Alle geänderten Dateien und Projekteinstellungen dieses Branches werden gemeinsam übertragen.</p>
+    <form id="commit-form">
+      <label for="commit-message">Commit-Nachricht</label>
+      <input id="commit-message" name="message" required maxlength="200" autocomplete="off">
+      <p id="commit-error" role="alert"></p>
+      <div class="login-actions">
+        <button id="commit-submit" type="submit" data-icon="↥" aria-label="Änderungen committen und pushen" title="Änderungen committen und pushen">Commit und Push</button>
+        <button id="commit-cancel" type="button" data-icon="×" aria-label="Commit abbrechen" title="Commit abbrechen">Abbrechen</button>
+      </div>
+    </form>
   </dialog>
   <footer>
     <div id="footer-actions">

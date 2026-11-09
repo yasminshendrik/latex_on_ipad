@@ -8,6 +8,7 @@
   const PERIODIC_SAVE_MS = 3 * 60 * 1000;
   const COMPILE_TIMEOUT_MS = 3 * 60 * 1000;
   const TEX_FILE = /\.(tex|latex|ltx)$/i;
+  const PROJECT_SETTINGS_PATH = '.latex-ipad/settings.json';
   const logActivity = (message, options) => {
     if (typeof window.__technicalLog === 'function') window.__technicalLog(message, options);
   };
@@ -58,6 +59,17 @@
   const dashboardList = document.getElementById('local-project-list');
   const dashboardEmpty = document.getElementById('local-project-empty');
   const branchSelect = document.getElementById('branch-select');
+  const addTexFileButton = document.getElementById('add-tex-file');
+  const newTexFileDialog = document.getElementById('new-tex-file-dialog');
+  const newTexFileForm = document.getElementById('new-tex-file-form');
+  const newTexFileFolder = document.getElementById('new-tex-file-folder');
+  const newTexFileName = document.getElementById('new-tex-file-name');
+  const newTexFileError = document.getElementById('new-tex-file-error');
+  const commitDialog = document.getElementById('commit-dialog');
+  const commitForm = document.getElementById('commit-form');
+  const commitMessage = document.getElementById('commit-message');
+  const commitError = document.getElementById('commit-error');
+  const commitSubmit = document.getElementById('commit-submit');
   const fileList = document.getElementById('file-list');
   const projectName = document.getElementById('project-name');
   const projectBranch = document.getElementById('project-branch');
@@ -69,6 +81,25 @@
   if (token && !token.startsWith('github_pat_')) {
     sessionStorage.removeItem('gh_token');
     token = '';
+  }
+
+  function appendLocalPathsToTree(tree, files) {
+    const directories = new Set(tree.filter((item) => item.type === 'tree').map((item) => item.path));
+    for (const file of files) {
+      const parts = file.path.split('/');
+      parts.pop();
+      const parents = [];
+      while (parts.length) {
+        parents.unshift(parts.join('/'));
+        parts.pop();
+      }
+      for (const path of parents) {
+        if (directories.has(path)) continue;
+        directories.add(path);
+        tree.push({ type: 'tree', path });
+      }
+      if (!tree.some((item) => item.path === file.path)) tree.push(file);
+    }
   }
   let loginRequest;
   let repoListRequest;
@@ -82,6 +113,9 @@
   let createRepoRequest;
   let pendingRepoCreation;
   let conflictResolver;
+  let pendingGitHubAction = 'repositories';
+  let commitRequest;
+  let newTexFileRequest = false;
   let activeFileButtons = [];
   let activeFileLoaded = false;
   let suppressEditorChanges = false;
@@ -280,7 +314,7 @@
   }
 
   async function storeFile(record) {
-    const { id, repo, branch, path, content, updatedAt, baseContent, remoteSha } = record;
+    const { id, repo, branch, path, content, updatedAt, baseContent, remoteSha, isNewFile } = record;
     try {
       await storeRecord('files', record);
       return;
@@ -291,7 +325,7 @@
       }
       try {
         localStorage.setItem(`latex_ipad_document:${repo}:${branch}:${path}`, content);
-        localStorage.setItem(fileMetadataKey(repo, branch, path), JSON.stringify({ baseContent, remoteSha }));
+        localStorage.setItem(fileMetadataKey(repo, branch, path), JSON.stringify({ baseContent, remoteSha, isNewFile }));
         const previous = readProjectCatalog().find((project) => project.id === repo);
         writeProjectCatalog({
           id: repo,
@@ -463,6 +497,7 @@
       settings,
       updatedAt: Date.now()
     });
+    if (context.repo !== 'local') await storeVersionedProjectSettings(context, settings);
     logActivity('Projekteinstellungen lokal gespeichert.');
     if (!quiet) {
       setStatus(indexedDbSaved
@@ -470,6 +505,73 @@
         : 'Projekteinstellungen lokal gespeichert; IndexedDB nicht verfügbar, localStorage wird verwendet.');
     }
     return settings;
+  }
+
+  function isSafeProjectPath(path) {
+    return typeof path === 'string' && path.length > 0 && !path.startsWith('/') && !path.includes('\\') &&
+      !path.split('/').some((part) => !part || part === '.' || part === '..');
+  }
+
+  function serializeProjectSettings(settings) {
+    return `${JSON.stringify({
+      version: 1,
+      mainFiles: settings.mainFiles,
+      hyphenation: settings.hyphenation
+    }, null, 2)}\n`;
+  }
+
+  function parseProjectSettings(content) {
+    let saved;
+    try { saved = JSON.parse(content); }
+    catch (error) { throw new Error(`Versionierte Projekteinstellungen sind kein gültiges JSON: ${error.message}`); }
+    if (!saved || typeof saved !== 'object' || Array.isArray(saved) || saved.version !== 1) {
+      throw new Error('Versionierte Projekteinstellungen haben ein nicht unterstütztes Format.');
+    }
+    if (!saved.mainFiles || typeof saved.mainFiles !== 'object' || Array.isArray(saved.mainFiles) ||
+      Object.entries(saved.mainFiles).some(([branch, path]) =>
+        !branch || typeof path !== 'string' || (path !== '' && (!isSafeProjectPath(path) || !TEX_FILE.test(path))))) {
+      throw new Error('Versionierte Hauptdatei-Auswahlen sind ungültig.');
+    }
+    if (!['auto', 'ngerman', 'english'].includes(saved.hyphenation)) {
+      throw new Error('Versionierte Silbentrennung ist ungültig.');
+    }
+    return { mainFiles: { ...saved.mainFiles }, hyphenation: saved.hyphenation };
+  }
+
+  async function storeVersionedProjectSettings(context, settings) {
+    const existing = await readStoredFile(context.repo, context.branch, PROJECT_SETTINGS_PATH);
+    let content = serializeProjectSettings(settings);
+    if (existing?.content) {
+      try {
+        const existingSettings = parseProjectSettings(existing.content);
+        if (JSON.stringify(existingSettings) === JSON.stringify(settings)) content = existing.content;
+      } catch (error) {
+        logActivity('Vorhandene versionierte Projekteinstellungen konnten nicht gelesen werden; lokale Auswahl bleibt erhalten.');
+      }
+    }
+    await storeFile({
+      ...(existing || {}),
+      id: fileId(context.repo, context.branch, PROJECT_SETTINGS_PATH),
+      repo: context.repo,
+      branch: context.branch,
+      path: PROJECT_SETTINGS_PATH,
+      content,
+      baseContent: existing?.baseContent ?? '',
+      remoteSha: existing?.remoteSha,
+      isNewFile: existing?.isNewFile ?? !existing?.remoteSha,
+      updatedAt: Date.now()
+    });
+    const project = readProjectCatalog().find((item) => item.id === context.repo);
+    await storeProject({
+      ...project,
+      id: context.repo,
+      repo: context.repo,
+      branch: context.branch,
+      settings,
+      paths: [...new Set([...(project?.branch === context.branch ? project.paths || [] : []), PROJECT_SETTINGS_PATH])],
+      updatedAt: Date.now()
+    });
+    logActivity('Versionierte Projekteinstellungen lokal vorbereitet.');
   }
   async function migrateLegacyMainFile(context, records) {
     const legacy = localStorage.getItem(mainFileKey(context));
@@ -1146,13 +1248,84 @@
       .then(() => requestCompile('main'))
       .catch((error) => { logActivity('Änderung der Silbentrennung konnte nicht gespeichert werden.'); setStatus(`Projekteinstellung konnte nicht gespeichert werden: ${error.message}`); });
   });
-  document.getElementById('save-btn').addEventListener('click', () =>
-    persistCurrentFile(true).then(() => {
-      if (repoName && token && navigator.onLine) {
-        setStatus(`Lokal gespeichert: ${activePath}. GitHub-Commit ist noch nicht verfügbar.`);
+  document.getElementById('save-btn').addEventListener('click', () => saveProjectFromButton().catch((error) => showError(error.message)));
+
+  async function saveProjectFromButton() {
+    const context = projectContext();
+    const savedPath = activePath;
+    await persistCurrentFile(true);
+    if (!isCurrentContext(context)) {
+      logActivity('GitHub-Commit ausgelassen: Projektkontext hat sich nach dem lokalen Speichern geändert.');
+      setStatus(`Lokal gespeichert: ${savedPath}. Kein Commit für den geänderten Projektkontext gestartet.`);
+      return;
+    }
+    if (context.repo === 'local') return;
+    const settings = readProjectSettings(context);
+    const changes = {};
+    if (mainFileSelect.value !== settings.mainFiles[context.branch]) changes.mainFile = mainFileSelect.value;
+    if (hyphenationSelect.value !== settings.hyphenation) changes.hyphenation = hyphenationSelect.value;
+    if (Object.keys(changes).length) await saveProjectSettings(context, changes, true);
+    else await storeVersionedProjectSettings(context, settings);
+    const records = await readProjectFileRecords(context);
+    if (!isCurrentContext(context)) {
+      logActivity('GitHub-Commit ausgelassen: Projektkontext hat sich vor dem Commit geändert.');
+      setStatus('Lokale Änderungen bleiben gespeichert; kein Commit für den geänderten Projektkontext gestartet.');
+      return;
+    }
+    if (!records.some(isChangedTextFile)) {
+      setStatus('Lokal gespeichert; es gibt keine neuen Änderungen für GitHub.');
+      return;
+    }
+    if (!navigator.onLine) {
+      logActivity('GitHub-Commit ausgelassen: offline; lokale Dateien und Einstellungen bleiben gespeichert.');
+      setStatus(`Lokal gespeichert: ${activePath}. Offline; keine GitHub-Anfrage gestartet.`);
+      return;
+    }
+    if (!token) {
+      requestGitHubLogin('commit');
+      return;
+    }
+    openCommitDialog();
+  }
+
+  document.getElementById('commit-cancel').addEventListener('click', () => {
+    if (!commitRequest) {
+      logActivity('GitHub-Commit abgebrochen; lokale Änderungen bleiben gespeichert.');
+      commitDialog.close();
+    }
+  });
+  commitDialog.addEventListener('cancel', (event) => {
+    if (commitRequest) event.preventDefault();
+    else logActivity('GitHub-Commit abgebrochen; lokale Änderungen bleiben gespeichert.');
+  });
+  commitForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (commitRequest) return;
+    const message = commitMessage.value.trim();
+    if (!message || message.length > 200) {
+      commitError.textContent = 'Bitte eine Commit-Nachricht mit höchstens 200 Zeichen eingeben.';
+      return;
+    }
+    commitRequest = true;
+    commitSubmit.disabled = true;
+    commitError.textContent = '';
+    logActivity('GitHub-Commit angefordert.');
+    try {
+      const result = await commitProjectChanges(message);
+      if (result.noChanges) {
+        setStatus('Lokal gespeichert; es gibt keine neuen Änderungen für GitHub.');
+      } else {
+        setStatus(`GitHub-Commit erfolgreich: ${result.sha.slice(0, 7)} (${result.count} Dateien).`);
       }
-    }).catch((error) => showError(error.message))
-  );
+      commitDialog.close();
+    } catch (error) {
+      logActivity('GitHub-Commit fehlgeschlagen; lokale Änderungen bleiben erhalten.');
+      commitError.textContent = error.message;
+    } finally {
+      commitRequest = undefined;
+      commitSubmit.disabled = false;
+    }
+  });
 
   async function loadMonaco() {
     if (!navigator.onLine || !window.crypto) return false;
@@ -1262,6 +1435,165 @@
     if (signal?.aborted) throw new Error('Anfrage abgebrochen.');
     if (!response.ok) throw new Error(`GitHub API ${response.status}: ${response.statusText}`);
     return response;
+  }
+
+  async function readProjectFileRecords(context) {
+    const records = new Map();
+    try {
+      for (const record of await readAllRecords('files')) {
+        if (record.repo === context.repo && record.branch === context.branch) records.set(record.path, record);
+      }
+    } catch (error) {
+      if ('indexedDB' in window) {
+        throw new Error(`Lokale IndexedDB-Dateien konnten nicht vollständig gelesen werden; Commit vorsichtshalber abgebrochen: ${error.message}`);
+      }
+      logActivity('IndexedDB-Dateien konnten für den Commit nicht gelesen werden; localStorage wird geprüft.');
+    }
+    const prefix = `latex_ipad_document:${context.repo}:${context.branch}:`;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(prefix)) continue;
+      const path = key.slice(prefix.length);
+      if (records.has(path)) continue;
+      let metadata = {};
+      try { metadata = JSON.parse(localStorage.getItem(fileMetadataKey(context.repo, context.branch, path)) || '{}'); }
+      catch (error) { throw new Error(`Lokale Metadaten für ${path} sind ungültig: ${error.message}`); }
+      records.set(path, {
+        id: fileId(context.repo, context.branch, path),
+        repo: context.repo,
+        branch: context.branch,
+        path,
+        content: localStorage.getItem(key),
+        ...metadata
+      });
+    }
+    return [...records.values()];
+  }
+
+  function isChangedTextFile(record) {
+    if (record.binary) return false;
+    return record.isNewFile === true || typeof record.baseContent !== 'string' || record.content !== record.baseContent;
+  }
+
+  function openCommitDialog() {
+    commitError.textContent = '';
+    commitMessage.value = '';
+    if (!commitDialog.open) commitDialog.showModal();
+  }
+
+  async function commitProjectChanges(message) {
+    const context = projectContext();
+    const expectedToken = token;
+    if (!context.repo || context.repo === 'local') throw new Error('Für ein lokales Projekt gibt es keinen GitHub-Branch.');
+    if (!expectedToken || !navigator.onLine) throw new Error('GitHub-Commit benötigt eine Internetverbindung und ein gültiges Token.');
+    const files = await readProjectFileRecords(context);
+    const changes = files.filter(isChangedTextFile);
+    if (!changes.length) return { noChanges: true };
+    const project = readProjectCatalog().find((item) => item.id === context.repo);
+    const baseSha = project?.remoteHeadShas?.[context.branch];
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseSha || '')) {
+      throw new Error('Der Remote-Basisstand dieses Branches fehlt. Bitte das Repository online erneut öffnen.');
+    }
+    const repoPath = context.repo.split('/').map(encodeURIComponent).join('/');
+    const branchPath = context.branch.split('/').map(encodeURIComponent).join('/');
+    const apiBase = `/repos/${repoPath}`;
+    const refResponse = await githubApi(`${apiBase}/git/ref/heads/${branchPath}`);
+    const ref = await refResponse.json();
+    if (ref.object?.sha !== baseSha) {
+      throw new Error('Der GitHub-Branch wurde seit dem letzten Laden geändert. Der Commit wurde abgebrochen; bitte das Repository erneut öffnen.');
+    }
+    const commitResponse = await githubApi(`${apiBase}/git/commits/${encodeURIComponent(baseSha)}`);
+    const baseCommit = await commitResponse.json();
+    if (!baseCommit.tree?.sha) throw new Error('GitHub lieferte keinen Dateibaum für den gespeicherten Remote-Basisstand.');
+    const treeResponse = await githubApi(`${apiBase}/git/trees/${encodeURIComponent(baseCommit.tree.sha)}?recursive=1`);
+    const baseTree = await treeResponse.json();
+    if (baseTree.truncated || !Array.isArray(baseTree.tree)) throw new Error('GitHub lieferte keinen vollständigen Remote-Dateibaum.');
+    const remoteFiles = new Map(baseTree.tree.filter((item) => item.type === 'blob').map((item) => [item.path, item]));
+    for (const record of changes) {
+      if (!isSafeProjectPath(record.path)) throw new Error('Ein lokaler Dateipfad ist ungültig; der Commit wurde abgebrochen.');
+      const remoteFile = remoteFiles.get(record.path);
+      if (record.isNewFile) {
+        if (remoteFile) throw new Error(record.path === PROJECT_SETTINGS_PATH
+          ? 'Die versionierten Projekteinstellungen existieren bereits auf GitHub und wurden lokal noch nicht abgeglichen. Repository erneut öffnen.'
+          : `Die Datei ${record.path} existiert bereits auf GitHub. Repository erneut öffnen, um den Konflikt aufzulösen.`);
+      } else if (!remoteFile || !record.remoteSha || remoteFile.sha !== record.remoteSha) {
+        throw new Error(record.path === PROJECT_SETTINGS_PATH
+          ? 'Die versionierten Projekteinstellungen auf GitHub weichen vom gespeicherten Stand ab. Der Commit wurde abgebrochen; Repository erneut öffnen.'
+          : `Der Remote-Stand von ${record.path} weicht vom gespeicherten Stand ab. Der Commit wurde abgebrochen; Repository erneut öffnen.`);
+      }
+      if (typeof record.baseContent !== 'string' || typeof record.content !== 'string') {
+        throw new Error(`Für ${record.path} fehlt eine sichere Textbasis. Repository erneut öffnen, bevor Änderungen übertragen werden.`);
+      }
+    }
+    if (token !== expectedToken || !isCurrentContext(context) || !navigator.onLine) {
+      throw new Error('GitHub-Commit abgebrochen: Anmeldung, Projekt oder Verbindung hat sich geändert.');
+    }
+    logActivity('Atomarer GitHub-Commit wird vorbereitet.');
+    const blobs = new Map();
+    for (const record of changes) {
+      const response = await githubWrite(`${apiBase}/git/blobs`, 'POST', {
+        content: record.content,
+        encoding: 'utf-8'
+      });
+      const blob = await response.json();
+      if (!blob.sha) throw new Error('GitHub lieferte keinen Datei-SHA für den Commit.');
+      blobs.set(record.path, blob.sha);
+    }
+    const treeResponseCreated = await githubWrite(`${apiBase}/git/trees`, 'POST', {
+      base_tree: baseCommit.tree.sha,
+      tree: changes.map((record) => ({
+        path: record.path,
+        mode: '100644',
+        type: 'blob',
+        sha: blobs.get(record.path)
+      }))
+    });
+    const newTree = await treeResponseCreated.json();
+    if (!newTree.sha) throw new Error('GitHub lieferte keinen neuen Projektbaum.');
+    const commitResponseCreated = await githubWrite(`${apiBase}/git/commits`, 'POST', {
+      message,
+      tree: newTree.sha,
+      parents: [baseSha]
+    });
+    const newCommit = await commitResponseCreated.json();
+    if (!newCommit.sha) throw new Error('GitHub lieferte keinen neuen Commit-SHA.');
+    if (token !== expectedToken || !isCurrentContext(context) || !navigator.onLine) {
+      throw new Error('GitHub-Commit wurde erstellt, aber der Branch konnte wegen eines geänderten Projektkontexts nicht aktualisiert werden.');
+    }
+    try {
+      await githubWrite(`${apiBase}/git/refs/heads/${branchPath}`, 'PATCH', {
+        sha: newCommit.sha,
+        force: false
+      });
+    } catch (error) {
+      if (/GitHub API (?:409|422)/.test(error.message)) {
+        throw new Error('Der GitHub-Branch wurde während des Commits geändert. Der Push wurde abgebrochen; lokale Änderungen bleiben erhalten.');
+      }
+      throw error;
+    }
+    try {
+      for (const record of changes) {
+        await storeFile({
+          ...record,
+          baseContent: record.content,
+          remoteSha: blobs.get(record.path),
+          isNewFile: false,
+          updatedAt: Date.now()
+        });
+      }
+      await storeProject({
+        ...project,
+        id: context.repo,
+        repo: context.repo,
+        branch: context.branch,
+        remoteHeadShas: { ...(project?.remoteHeadShas || {}), [context.branch]: newCommit.sha },
+        updatedAt: Date.now()
+      });
+    } catch (error) {
+      throw new Error(`Commit wurde auf GitHub erstellt, aber die lokale Remote-Basis konnte nicht vollständig aktualisiert werden: ${error.message}`);
+    }
+    logActivity('GitHub-Commit erfolgreich übertragen; lokale Basis-SHAs aktualisiert.');
+    return { noChanges: false, sha: newCommit.sha, count: changes.length };
   }
 
   function encodeBase64(value) {
@@ -1404,7 +1736,8 @@
     activeFileButtons = [];
     const visibleItems = items.filter((item) => {
       const parts = item.path.split('/');
-      return !parts.includes('.git') && (item.type === 'tree' || !['.gitignore', '.gitattributes', '.gitmodules'].includes(parts[parts.length - 1]));
+      return !parts.includes('.git') && item.path !== '.latex-ipad' && !item.path.startsWith('.latex-ipad/') &&
+        (item.type === 'tree' || !['.gitignore', '.gitattributes', '.gitmodules'].includes(parts[parts.length - 1]));
     });
     const visibleFiles = visibleItems.filter((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
     const visibleFilePaths = new Set(visibleFiles.map((item) => item.path));
@@ -1534,7 +1867,110 @@
     dashboard.hidden = true;
     document.getElementById('main-container').hidden = false;
     sidebarToggle.disabled = false;
+    addTexFileButton.disabled = false;
   }
+
+  function openNewTexFileDialog() {
+    const folders = [...new Set(sidebarItems.filter((item) => item.type === 'tree' &&
+      item.path !== '.latex-ipad' && !item.path.startsWith('.latex-ipad/')).map((item) => item.path))].sort();
+    const options = [document.createElement('option')];
+    options[0].value = '';
+    options[0].textContent = 'Projektordner-Wurzel';
+    for (const folder of folders) {
+      const option = document.createElement('option');
+      option.value = folder;
+      option.textContent = folder;
+      options.push(option);
+    }
+    newTexFileFolder.replaceChildren(...options);
+    newTexFileName.value = '';
+    newTexFileError.textContent = '';
+    if (!newTexFileDialog.open) newTexFileDialog.showModal();
+  }
+
+  addTexFileButton.addEventListener('click', openNewTexFileDialog);
+  const newTexFileSubmit = document.getElementById('new-tex-file-submit');
+  const newTexFileCancel = document.getElementById('new-tex-file-cancel');
+  newTexFileCancel.addEventListener('click', () => {
+    if (!newTexFileRequest) {
+      logActivity('Anlegen einer TeX-Datei abgebrochen.');
+      newTexFileDialog.close();
+    }
+  });
+  newTexFileDialog.addEventListener('cancel', (event) => {
+    if (newTexFileRequest) event.preventDefault();
+    else logActivity('Anlegen einer TeX-Datei abgebrochen.');
+  });
+  newTexFileForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (newTexFileRequest) return;
+    const fileName = newTexFileName.value.trim();
+    const folder = newTexFileFolder.value;
+    const stem = fileName.slice(0, fileName.lastIndexOf('.'));
+    if (!fileName || fileName.length > 255 || !stem || !TEX_FILE.test(fileName) ||
+      /[\/\\\u0000-\u001f\u007f]/.test(fileName)) {
+      newTexFileError.textContent = 'Bitte einen gültigen Dateinamen mit .tex, .latex oder .ltx eingeben.';
+      return;
+    }
+    if (folder && !sidebarItems.some((item) => item.type === 'tree' && item.path === folder)) {
+      newTexFileError.textContent = 'Der ausgewählte Projektordner ist nicht mehr verfügbar.';
+      return;
+    }
+    const path = folder ? `${folder}/${fileName}` : fileName;
+    if (!isSafeProjectPath(path) || sidebarItems.some((item) => item.path === path)) {
+      newTexFileError.textContent = 'Unter diesem Pfad existiert bereits eine Datei oder der Pfad ist ungültig.';
+      return;
+    }
+    const context = projectContext();
+    newTexFileRequest = true;
+    newTexFileSubmit.disabled = true;
+    newTexFileCancel.disabled = true;
+    try {
+      const existing = await readStoredFile(context.repo, context.branch, path);
+      if (existing) {
+        newTexFileError.textContent = 'Unter diesem Pfad existiert bereits eine lokal gespeicherte Datei.';
+        return;
+      }
+      const record = {
+        id: fileId(context.repo, context.branch, path),
+        repo: context.repo,
+        branch: context.branch,
+        path,
+        content: '',
+        baseContent: '',
+        isNewFile: true,
+        updatedAt: Date.now()
+      };
+      await storeFile(record);
+      const project = readProjectCatalog().find((item) => item.id === context.repo);
+      await storeProject({
+        ...project,
+        id: context.repo,
+        repo: context.repo,
+        branch: context.branch,
+        activePath: path,
+        paths: [...new Set([...(project?.branch === context.branch ? project.paths || [] : []), path])],
+        updatedAt: record.updatedAt
+      });
+      if (!isCurrentContext(context)) return;
+      sidebarItems = [...sidebarItems, { type: 'blob', path, mode: '100644', size: 0 }];
+      activePath = path;
+      activeFileLoaded = true;
+      setEditorValue('');
+      renderSidebar();
+      await refreshMainFiles();
+      newTexFileDialog.close();
+      logActivity('Neue TeX-Datei lokal angelegt.');
+      setStatus(`Neue TeX-Datei lokal angelegt: ${path}`);
+    } catch (error) {
+      logActivity('Neue TeX-Datei konnte nicht lokal angelegt werden.');
+      newTexFileError.textContent = `Datei konnte nicht angelegt werden: ${error.message}`;
+    } finally {
+      newTexFileRequest = false;
+      newTexFileSubmit.disabled = false;
+      newTexFileCancel.disabled = false;
+    }
+  });
 
   async function refreshDashboard() {
     dashboardList.replaceChildren();
@@ -1586,7 +2022,8 @@
         const title = document.createElement('strong');
         title.textContent = project.repo === 'local' ? 'Lokales Projekt' : project.repo;
         const metadata = document.createElement('p');
-        metadata.textContent = `${project.branch || 'main'} · ${(project.paths || []).length} lokal gespeicherte ${project.paths?.length === 1 ? 'Datei' : 'Dateien'}`;
+        const fileCount = (project.paths || []).filter((path) => path !== PROJECT_SETTINGS_PATH).length;
+        metadata.textContent = `${project.branch || 'main'} · ${fileCount} lokal gespeicherte ${fileCount === 1 ? 'Datei' : 'Dateien'}`;
         const open = document.createElement('button');
         open.type = 'button';
         open.textContent = 'Lokal öffnen';
@@ -1851,9 +2288,22 @@
     const remotePaths = new Set(tree.filter((item) => item.type === 'blob' || item.type === 'commit').map((item) => item.path));
     for (const local of localByPath.values()) {
       if (remotePaths.has(local.path)) continue;
-      const dirty = !local.binary && (local.baseContent === undefined || local.content !== local.baseContent);
+      const dirty = !local.binary && (local.isNewFile || local.baseContent === undefined || local.content !== local.baseContent);
       if (!dirty) {
         await removeStoredFile(repo, branch, local.path);
+        continue;
+      }
+      if (local.isNewFile) {
+        localOnly.push({ type: 'blob', path: local.path, mode: '100644' });
+        prepared.push({
+          ...local,
+          id: fileId(repo, branch, local.path),
+          repo,
+          branch,
+          baseContent: '',
+          remoteSha: undefined,
+          updatedAt: Date.now()
+        });
         continue;
       }
       const choice = await askConflictChoice(local.path, local.content, '', signal);
@@ -1875,6 +2325,7 @@
         content: merged.content,
         baseContent: '',
         remoteSha: undefined,
+        isNewFile: true,
         updatedAt: Date.now()
       });
     }
@@ -1893,10 +2344,19 @@
       const [owner, name] = parts.map(encodeURIComponent);
       const base = `/repos/${owner}/${name}`;
       const branches = await githubPages(`${base}/branches?per_page=100`, signal);
-      const nextBranch = branches.some((branch) => branch.name === preferredBranch) ? preferredBranch : branches[0]?.name;
+      const selectedBranch = branches.find((branch) => branch.name === preferredBranch) || branches[0];
+      const nextBranch = selectedBranch?.name;
+      const remoteHeadSha = selectedBranch?.commit?.sha || '';
       let tree = [];
       if (nextBranch) {
-        const response = await githubApi(`${base}/git/trees/${encodeURIComponent(nextBranch)}?recursive=1`, 'application/vnd.github+json', signal);
+        let treeRevision = encodeURIComponent(nextBranch);
+        if (remoteHeadSha) {
+          const commitResponse = await githubApi(`${base}/git/commits/${encodeURIComponent(remoteHeadSha)}`, 'application/vnd.github+json', signal);
+          const commitData = await commitResponse.json();
+          if (!commitData.tree?.sha) throw new Error('GitHub lieferte keinen Dateibaum für den aktuellen Branch-Stand.');
+          treeRevision = encodeURIComponent(commitData.tree.sha);
+        }
+        const response = await githubApi(`${base}/git/trees/${treeRevision}?recursive=1`, 'application/vnd.github+json', signal);
         const data = await response.json();
         if (data.truncated || !Array.isArray(data.tree)) throw new Error('GitHub lieferte keinen vollständigen Repository-Baum.');
         tree = data.tree;
@@ -1905,16 +2365,73 @@
         clearTimeout(saveTimer);
         await persistCurrentFile();
       }
-      const { files, unsupported, manualConflicts, localOnly } = await downloadRepositoryFiles(nextRepo, nextBranch || preferredBranch || 'main', tree, signal);
+      const targetBranch = nextBranch || preferredBranch || 'main';
+      const targetContext = { repo: nextRepo, branch: targetBranch };
+      const settingsEntry = tree.find((item) => item.path === PROJECT_SETTINGS_PATH);
+      if (settingsEntry && (settingsEntry.type !== 'blob' || settingsEntry.mode === '120000')) {
+        throw new Error('Die versionierte Projekteinstellungsdatei wird als Symlink oder anderes nicht unterstütztes Objekt gespeichert.');
+      }
+      const localSettingsRecord = await readStoredFile(nextRepo, targetBranch, PROJECT_SETTINGS_PATH);
+      const catalogProject = readProjectCatalog().find((item) => item.id === nextRepo);
+      const hasLocalSettings = localStorage.getItem(projectSettingsKey(nextRepo)) !== null ||
+        localStorage.getItem(mainFileKey(targetContext)) !== null || Boolean(catalogProject?.settings);
+      if (settingsEntry && !localSettingsRecord && hasLocalSettings) {
+        const settings = readProjectSettings(targetContext);
+        await storeFile({
+          id: fileId(nextRepo, targetBranch, PROJECT_SETTINGS_PATH),
+          repo: nextRepo,
+          branch: targetBranch,
+          path: PROJECT_SETTINGS_PATH,
+          content: serializeProjectSettings(settings),
+          baseContent: '',
+          isNewFile: true,
+          updatedAt: Date.now()
+        });
+      }
+      const { files, unsupported, manualConflicts, localOnly } = await downloadRepositoryFiles(nextRepo, targetBranch, tree, signal);
       logActivity(`Repository-Download abgeschlossen (${files.length} Dateien, ${unsupported.length} nicht unterstützte Einträge, ${manualConflicts.length} manuelle Konflikte).`);
-      tree.push(...localOnly);
+      appendLocalPathsToTree(tree, localOnly);
+      let settingsFile = files.find((file) => file.path === PROJECT_SETTINGS_PATH);
+      if (!settingsFile) {
+        const settings = readProjectSettings(targetContext);
+        settingsFile = {
+          id: fileId(nextRepo, targetBranch, PROJECT_SETTINGS_PATH),
+          repo: nextRepo,
+          branch: targetBranch,
+          path: PROJECT_SETTINGS_PATH,
+          content: serializeProjectSettings(settings),
+          baseContent: '',
+          isNewFile: true,
+          updatedAt: Date.now()
+        };
+        files.push(settingsFile);
+        appendLocalPathsToTree(tree, [{ type: 'blob', path: PROJECT_SETTINGS_PATH, mode: '100644' }]);
+      }
+      const localSettingsBeforeRestore = readProjectSettings(targetContext);
+      const branchSettings = parseProjectSettings(settingsFile.content);
+      const restoredSettings = {
+        ...branchSettings,
+        mainFiles: { ...localSettingsBeforeRestore.mainFiles, ...branchSettings.mainFiles }
+      };
+      const availableMainFiles = files.filter((file) => !file.binary && TEX_FILE.test(file.path)).map((file) => file.path);
+      const configuredMainFile = restoredSettings.mainFiles[targetBranch];
+      const selectedMainFile = availableMainFiles.includes(configuredMainFile)
+        ? configuredMainFile
+        : availableMainFiles.includes('main.tex')
+          ? 'main.tex'
+          : availableMainFiles[0];
+      if (selectedMainFile && configuredMainFile !== selectedMainFile) {
+        restoredSettings.mainFiles[targetBranch] = selectedMainFile;
+        settingsFile.content = serializeProjectSettings(restoredSettings);
+      }
+      localStorage.setItem(projectSettingsKey(nextRepo), JSON.stringify(restoredSettings));
+      localStorage.removeItem(mainFileKey(targetContext));
       validateTree(tree);
       for (const record of files) await storeFile(record);
       if (token !== currentToken || signal?.aborted) {
         logActivity(signal?.aborted ? 'Repository-Öffnen abgebrochen.' : 'Repository-Öffnen verworfen: GitHub-Anmeldung geändert.');
         return false;
       }
-      const targetBranch = nextBranch || preferredBranch || 'main';
       const sameContext = nextRepo === repoName && targetBranch === branchName;
       if (!sameContext) {
         textarea.readOnly = true;
@@ -1951,7 +2468,7 @@
       sidebarItems = tree;
       if (!sameContext) collapsedFolders.clear();
       renderSidebar();
-      refreshMainFiles();
+      await refreshMainFiles();
       try {
         await storeProject({
           id: repoName,
@@ -1959,6 +2476,11 @@
           branch: branchName,
           activePath,
           paths: availablePaths,
+          remoteHeadShas: {
+            ...(catalogProject?.remoteHeadShas || {}),
+            [targetBranch]: remoteHeadSha
+          },
+          settings: restoredSettings,
           updatedAt: Date.now()
         });
       }
@@ -1984,9 +2506,16 @@
     }
   }
 
+  function requestGitHubLogin(action) {
+    pendingGitHubAction = action;
+    loginError.textContent = '';
+    if (!loginDialog.open) loginDialog.showModal();
+    logActivity('GitHub-Anmeldedialog für angeforderte Aktion geöffnet.');
+  }
+
   function openCreateRepository() {
     if (!token) {
-      showError('Bitte zuerst über „GitHub Login“ verbinden.');
+      requestGitHubLogin('create-repository');
       return;
     }
     if (!navigator.onLine) {
@@ -2084,7 +2613,7 @@
   });
 
   async function showRepositories() {
-    if (!token) { logActivity('Repository-Auswahl nicht gestartet: GitHub-Anmeldung fehlt.'); showError('Bitte zuerst über „GitHub Login“ verbinden.'); return; }
+    if (!token) { requestGitHubLogin('repositories'); return; }
     if (!navigator.onLine) {
       logActivity('Repository-Auswahl nicht gestartet: offline.');
       showError('Zum Laden von GitHub-Repositories ist eine Internetverbindung erforderlich. Lokale Projekte bleiben offline verfügbar.');
@@ -2159,9 +2688,7 @@
       logActivity('GitHub-Abmeldung abgeschlossen.');
       setStatus('Von GitHub abgemeldet.'); return;
     }
-    loginError.textContent = '';
-    logActivity('GitHub-Anmeldedialog geöffnet.');
-    loginDialog.showModal();
+    requestGitHubLogin('repositories');
   });
   document.getElementById('github-login-cancel').addEventListener('click', () => loginDialog.close());
   loginDialog.addEventListener('close', () => {
@@ -2170,6 +2697,7 @@
     loginSubmit.disabled = false;
     loginForm.reset();
     loginError.textContent = '';
+    if (!token) pendingGitHubAction = 'repositories';
   });
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2203,9 +2731,13 @@
       token = candidate;
       logActivity('GitHub-Anmeldung erfolgreich.');
       updateLoginButton();
+      const requestedAction = pendingGitHubAction;
       loginDialog.close();
       setStatus('Mit GitHub verbunden.');
-      await showRepositories();
+      pendingGitHubAction = 'repositories';
+      if (requestedAction === 'create-repository') openCreateRepository();
+      else if (requestedAction === 'commit') openCommitDialog();
+      else await showRepositories();
     } catch (error) {
       logActivity(controller.signal.aborted ? 'GitHub-Anmeldung abgebrochen.' : 'GitHub-Anmeldung fehlgeschlagen; Einzelheiten im Anmeldedialog.');
       if (!controller.signal.aborted) loginError.textContent = error.message;

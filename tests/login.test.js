@@ -12,6 +12,8 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
+  'add-tex-file', 'new-tex-file-dialog', 'new-tex-file-form', 'new-tex-file-folder', 'new-tex-file-name', 'new-tex-file-error',
+  'new-tex-file-submit', 'new-tex-file-cancel', 'commit-dialog', 'commit-form', 'commit-message', 'commit-error', 'commit-submit', 'commit-cancel',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
   'dashboard', 'local-project-list', 'local-project-empty', 'main-container', 'open-dashboard',
@@ -73,8 +75,15 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   const conflictDialog = elements['sync-conflict-dialog'];
   conflictDialog.showModal = () => { conflictDialog.open = true; };
   conflictDialog.close = () => { conflictDialog.open = false; };
+  const newTexFileDialog = elements['new-tex-file-dialog'];
+  newTexFileDialog.showModal = () => { newTexFileDialog.open = true; };
+  newTexFileDialog.close = () => { newTexFileDialog.open = false; };
+  const commitDialog = elements['commit-dialog'];
+  commitDialog.showModal = () => { commitDialog.open = true; };
+  commitDialog.close = () => { commitDialog.open = false; };
   elements['github-login-form'].reset = () => { elements['github-token'].value = ''; };
   elements['create-repo-form'].reset = () => {};
+  elements['new-tex-file-form'].reset = () => { elements['new-tex-file-name'].value = ''; };
   const footer = elements['app-status'];
   const location = new URL(locationHref);
   let replacement;
@@ -136,6 +145,38 @@ function response(data, { status = 200, link = '' } = {}) {
 function submit(app, value) {
   app.elements['github-token'].value = value;
   return app.elements['github-login-form'].handlers.submit({ preventDefault() {} });
+}
+
+function syncApiFetch({ baseSha = 'a'.repeat(40), refSha = baseSha, treeItems, mainContent = 'Remote-Hauptdatei', settingsContent, writeStatus = 201 } = {}) {
+  let blobNumber = 0;
+  const tree = treeItems || [{ type: 'blob', path: 'main.tex', sha: 'main-blob-sha', size: mainContent.length, mode: '100644' }];
+  return async (url, options = {}) => {
+    const method = options.method || 'GET';
+    if (url.endsWith('/user')) return response({});
+    if (url.includes('/user/repos') && method === 'GET') return response([{ full_name: 'alice/project', default_branch: 'main' }]);
+    if (url.includes('/branches')) return response([{ name: 'main', commit: { sha: baseSha } }]);
+    if (url.includes(`/git/commits/${baseSha}`) && method === 'GET') return response({ tree: { sha: 'tree-base' } });
+    if (url.includes('/git/trees/tree-base?recursive=1') && method === 'GET') {
+      return response({ truncated: false, tree: tree.map((item) => ({ ...item })) });
+    }
+    if (url.endsWith('/git/ref/heads/main') && method === 'GET') return response({ object: { sha: refSha } });
+    if (url.includes('/contents/.latex-ipad/settings.json?ref=main') && settingsContent !== undefined) {
+      return { ok: true, text: async () => settingsContent };
+    }
+    if (url.includes('/contents/')) return { ok: true, text: async () => mainContent };
+    if (url.endsWith('/git/blobs') && method === 'POST') {
+      return writeStatus < 300 ? response({ sha: `created-blob-${++blobNumber}` }, { status: writeStatus }) : response({}, { status: writeStatus });
+    }
+    if (url.endsWith('/git/trees') && method === 'POST') return response({ sha: 'tree-created' });
+    if (url.endsWith('/git/commits') && method === 'POST') return response({ sha: 'commit-created' });
+    if (url.endsWith('/git/refs/heads/main') && method === 'PATCH') return response({});
+    throw new Error(`Unerwartete URL: ${url} (${method})`);
+  };
+}
+
+async function openSyncRepository(app) {
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
 }
 
 test('Syntaxprüfung nutzt den lokalen Worker und verwirft veraltete Ergebnisse', async () => {
@@ -233,6 +274,38 @@ test('Gültiges Token wird geprüft, nur für die Sitzung gespeichert und bei Ab
   app.elements['gh-login-btn'].handlers.click();
   assert.equal(app.values.has('gh_token'), false);
   assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Mit GitHub verbinden');
+});
+
+test('GitHub-Repository öffnen startet ohne Token direkt die Anmeldung und setzt die Aktion fort', async () => {
+  const app = setup();
+  await app.elements['dashboard-open-repo'].handlers.click();
+  assert.equal(app.elements['github-login-dialog'].open, true);
+  assert.equal(Boolean(app.elements['repo-dialog'].open), false);
+  await submit(app, 'github_pat_test123');
+  assert.equal(app.elements['repo-dialog'].open, true);
+  assert.equal(app.requests.filter((request) => request.url.includes('/user/repos')).length, 1);
+});
+
+test('Repository-Erstellung nach Anmeldung ohne Token öffnet den passenden Dialog', async () => {
+  const app = setup();
+  app.elements['dashboard-create-repo'].handlers.click();
+  assert.equal(app.elements['github-login-dialog'].open, true);
+  await submit(app, 'github_pat_test123');
+  assert.equal(app.elements['create-repo-dialog'].open, true);
+  assert.equal(Boolean(app.elements['repo-dialog'].open), false);
+});
+
+test('Speichern ohne Token meldet an und setzt anschließend den Commit-Dialog fort', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Lokale Änderung';
+  app.elements['gh-login-btn'].handlers.click();
+  const repositoryRequestsBeforeSave = app.requests.filter((request) => request.url.includes('/user/repos')).length;
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.elements['github-login-dialog'].open, true);
+  await submit(app, 'github_pat_test123');
+  assert.equal(app.elements['commit-dialog'].open, true);
+  assert.equal(app.requests.filter((request) => request.url.includes('/user/repos')).length, repositoryRequestsBeforeSave);
 });
 
 test('Passwort oder anderes Tokenformat wird ohne Netzwerkzugriff abgewiesen', async () => {
@@ -1070,6 +1143,51 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
   assert.doesNotMatch(app.logs.join('\n'), /Lokal gespeicherter Inhalt/);
 });
 
+test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen', async () => {
+  const project = {
+    id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex',
+    paths: ['main.tex', 'chapters/start.tex'], updatedAt: 1
+  };
+  const app = setup({
+    localInitial: {
+      latex_ipad_projects: JSON.stringify([project]),
+      'latex_ipad_document:local:main:main.tex': 'Hauptdatei',
+      'latex_ipad_document:local:main:chapters/start.tex': 'Kapitel'
+    }
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements['add-tex-file'].disabled, false);
+  app.elements['add-tex-file'].handlers.click();
+  assert.equal(app.elements['new-tex-file-dialog'].open, true);
+  app.elements['new-tex-file-folder'].value = 'chapters';
+  app.elements['new-tex-file-name'].value = 'draft.pdf';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['new-tex-file-error'].textContent, /\.tex/);
+  app.elements['new-tex-file-name'].value = 'start.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['new-tex-file-error'].textContent, /existiert bereits/);
+  app.elements['new-tex-file-name'].value = 'draft.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.elements['new-tex-file-dialog'].open, false);
+  assert.equal(app.elements.editor.value, '');
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:chapters/draft.tex'), '');
+
+  app.elements.editor.value = 'Offline weiterbearbeitet';
+  await app.elements['save-btn'].handlers.click();
+  await app.elements['open-dashboard'].handlers.click();
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.value, 'Offline weiterbearbeitet');
+  const rendered = [];
+  const collectText = (node) => {
+    if (node.textContent) rendered.push(node.textContent);
+    for (const child of node.children || []) collectText(child);
+  };
+  collectText(app.elements['file-list']);
+  assert.ok(rendered.includes('draft.tex'));
+});
+
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
   assert.match(html, /button, select \{ min-height: 36px;/);
   assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
@@ -1116,6 +1234,141 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
     assert.match(attributes, /aria-label=/);
   }
   assert.match(html, /button\[data-icon\]::before \{ content: attr\(data-icon\)/);
+});
+
+test('Speichern bündelt geänderte Dateien und versionierte Projekteinstellungen in genau einem atomaren Commit', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Neue lokale Version';
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.elements['commit-dialog'].open, true);
+  app.elements['commit-message'].value = 'Dokument aktualisieren';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+
+  const commitRequests = app.requests.filter((request) =>
+    request.url.endsWith('/git/commits') && request.options.method === 'POST'
+  );
+  const treeRequest = app.requests.find((request) =>
+    request.url.endsWith('/git/trees') && request.options.method === 'POST'
+  );
+  const blobRequests = app.requests.filter((request) =>
+    request.url.endsWith('/git/blobs') && request.options.method === 'POST'
+  );
+  assert.ok(treeRequest, app.elements['commit-error'].textContent);
+  const commitBody = JSON.parse(commitRequests[0].options.body);
+  const treeBody = JSON.parse(treeRequest.options.body);
+  const blobContents = blobRequests.map((request) => JSON.parse(request.options.body).content);
+  assert.equal(commitRequests.length, 1);
+  assert.equal(commitBody.message, 'Dokument aktualisieren');
+  assert.deepEqual(commitBody.parents, ['a'.repeat(40)]);
+  assert.ok(treeBody.tree.some((item) => item.path === 'main.tex'));
+  assert.ok(treeBody.tree.some((item) => item.path === '.latex-ipad/settings.json'));
+  assert.ok(blobContents.includes('Neue lokale Version'));
+  assert.match(blobContents.find((content) => content.includes('"version": 1')), /"hyphenation": "auto"/);
+  assert.equal(app.requests.filter((request) =>
+    request.url.endsWith('/git/refs/heads/main') && request.options.method === 'PATCH'
+  ).length, 1);
+  assert.equal(JSON.parse(app.localValues.get('latex_ipad_file_metadata:alice/project:main:main.tex')).baseContent, 'Neue lokale Version');
+  assert.equal(JSON.parse(app.localValues.get('latex_ipad_projects'))[0].remoteHeadShas.main, 'commit-created');
+  assert.match(app.footer.textContent, /GitHub-Commit erfolgreich/);
+  assert.equal(app.elements['commit-dialog'].open, false);
+});
+
+test('Remote-Projekteinstellungen werden beim Öffnen wiederhergestellt', async () => {
+  const settingsContent = JSON.stringify({
+    version: 1,
+    mainFiles: { main: 'chapters.tex' },
+    hyphenation: 'ngerman'
+  });
+  const app = setup({
+    fetchImpl: syncApiFetch({
+      settingsContent,
+      treeItems: [
+        { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', size: 12, mode: '100644' },
+        { type: 'blob', path: 'chapters.tex', sha: 'chapter-blob-sha', size: 14, mode: '100644' },
+        { type: 'tree', path: '.latex-ipad' },
+        { type: 'blob', path: '.latex-ipad/settings.json', sha: 'settings-blob-sha', size: settingsContent.length, mode: '100644' }
+      ]
+    })
+  });
+  await openSyncRepository(app);
+  assert.equal(app.elements['main-file-select'].value, 'chapters.tex');
+  assert.equal(app.elements['project-hyphenation'].value, 'ngerman');
+  assert.deepEqual(JSON.parse(app.localValues.get('latex_ipad_settings:alice/project')), {
+    mainFiles: { main: 'chapters.tex' },
+    hyphenation: 'ngerman'
+  });
+});
+
+test('Bereits vorhandene lokale Projekteinstellungen lassen sich beim ersten Laden behalten', async () => {
+  const remoteSettings = `${JSON.stringify({
+    version: 1,
+    mainFiles: { main: 'main.tex' },
+    hyphenation: 'english'
+  }, null, 2)}\n`;
+  const localSettings = { mainFiles: { main: 'main.tex' }, hyphenation: 'ngerman' };
+  const app = setup({
+    localInitial: { 'latex_ipad_settings:alice/project': JSON.stringify(localSettings) },
+    fetchImpl: syncApiFetch({
+      settingsContent: remoteSettings,
+      treeItems: [
+        { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', size: 12, mode: '100644' },
+        { type: 'tree', path: '.latex-ipad' },
+        { type: 'blob', path: '.latex-ipad/settings.json', sha: 'settings-blob-sha', size: remoteSettings.length, mode: '100644' }
+      ]
+    })
+  });
+  await submit(app, 'github_pat_test123');
+  const opening = app.elements['repo-list'].children[0].handlers.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['sync-conflict-dialog'].open, true);
+  app.elements['sync-conflict-keep-local'].handlers.click();
+  await opening;
+  assert.equal(app.elements['project-hyphenation'].value, 'ngerman');
+  assert.deepEqual(JSON.parse(app.localValues.get('latex_ipad_settings:alice/project')), localSettings);
+  const metadata = JSON.parse(app.localValues.get('latex_ipad_file_metadata:alice/project:main:.latex-ipad/settings.json'));
+  assert.equal(metadata.baseContent, remoteSettings);
+  assert.equal(metadata.remoteSha, 'settings-blob-sha');
+});
+
+test('Offline-Speichern bleibt lokal und startet keine GitHub-Anfrage', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  app.context.navigator.onLine = false;
+  app.elements.editor.value = 'Nur lokal gespeichert';
+  const requestsBeforeSave = app.requests.length;
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.elements['commit-dialog'].open, undefined);
+  assert.equal(app.requests.length, requestsBeforeSave);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Nur lokal gespeichert');
+  assert.match(app.footer.textContent, /Offline; keine GitHub-Anfrage gestartet/);
+});
+
+test('Commit bricht bei geändertem Remote-Branch ab und erhält lokale Änderungen', async () => {
+  const app = setup({ fetchImpl: syncApiFetch({ refSha: 'b'.repeat(40) }) });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Lokale Änderung bleibt erhalten';
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Änderung sichern';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /Branch wurde seit dem letzten Laden geändert/);
+  assert.equal(app.requests.some((request) => request.url.endsWith('/git/blobs') && request.options.method === 'POST'), false);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Lokale Änderung bleibt erhalten');
+  assert.ok(app.logs.includes('GitHub-Commit fehlgeschlagen; lokale Änderungen bleiben erhalten.'));
+});
+
+test('GitHub-Schreibfehler bleibt sichtbar und lokale Änderungen bleiben erhalten', async () => {
+  const app = setup({ fetchImpl: syncApiFetch({ writeStatus: 403 }) });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Lokale Änderung ohne Berechtigung';
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Änderung sichern';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /GitHub API 403/);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Lokale Änderung ohne Berechtigung');
+  assert.equal(app.requests.some((request) =>
+    request.url.endsWith('/git/refs/heads/main') && request.options.method === 'PATCH'
+  ), false);
 });
 
 test('Remote-Projekt erscheint nach dem Öffnen lokal und lässt sich mit IndexedDB offline wieder öffnen', async () => {
