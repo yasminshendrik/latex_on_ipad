@@ -3,6 +3,7 @@
 ## Entwicklung
 
 - Achte bei der Entwicklung auf Sicherheit, Wartbarkeit und Erweiterbarkeit.
+- Änderungen dürfen direkt auf `main` gepusht werden; ein Pull Request ist nur erforderlich, wenn die Nutzerin / der Nutzer ihn ausdrücklich verlangt.
 
 ## Anforderungen und Stories
 
