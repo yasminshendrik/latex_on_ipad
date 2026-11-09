@@ -20,8 +20,9 @@
 
 ## Technisches Protokoll
 
-- Bei allen künftigen Änderungen müssen die betroffenen App-Aktivitäten einschließlich relevanter Fehler und Abbrüche sinnvoll und nachvollziehbar im vorhandenen technischen Protokoll erscheinen. Berücksichtige dies bei Implementierung und Tests.
-- Protokolliere keine Tokens, Zugangsdaten, Dokumentinhalte oder andere vertrauliche Daten. Halte die Einträge aussagekräftig, ohne unnötige oder wiederholte Meldungen zu erzeugen.
+- Protokolliere relevante Ereignisse und Fehler entlang des Kernablaufs: GitHub-Anmeldung, Repository-Auswahl, Branch-/Baumabruf, Download, lokale Speicherung und Editoröffnung. Erfasse auch relevante Abbrüche sowie Offline- und Fallback-Pfade.
+- Sichere Änderungen an diesen Abläufen mit Tests für Erfolg, Fehler und Abbruch ab. Protokolliere keine Tokens, Zugangsdaten, Dokumentinhalte, vollständigen URLs oder rohe vertrauliche Fehlermeldungen.
+- Halte Einträge aussagekräftig und auf das nötige Maß beschränkt; vermeide insbesondere wiederholte Meldungen bei häufigen Abläufen wie automatischen Speicherungen.
 
 ## Service worker cache versioning
 

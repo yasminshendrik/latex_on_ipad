@@ -86,6 +86,7 @@
   let activeFileLoaded = false;
   let suppressEditorChanges = false;
   let saveQueue = Promise.resolve();
+  let saveFailureLogged = false;
   let lintWorker;
   let lintTimer;
   let lintRequestId = 0;
@@ -318,7 +319,7 @@
     const catalogProject = readProjectCatalog().find((item) => item.id === project.id);
     let storedProject;
     try { storedProject = await readRecord('projects', project.id); }
-    catch (error) { logActivity(`Projektmetadaten konnten nicht aus IndexedDB gelesen werden: ${error.message}`); }
+    catch (error) { logActivity('Projektmetadaten konnten nicht aus IndexedDB gelesen werden.'); }
     const updated = {
       ...catalogProject,
       ...storedProject,
@@ -949,16 +950,30 @@
           updatedAt: record.updatedAt
         });
       } catch (error) {
+        logActivity('Datei lokal gespeichert; Projektmetadaten konnten nicht gespeichert werden.');
         setStatus(`Datei lokal gespeichert; Projektmetadaten konnten nicht gespeichert werden: ${error.message}`);
       }
       if (repo === 'local') {
         try { localStorage.setItem('latex_ipad_document', content); }
-        catch (error) { setStatus(`IndexedDB gespeichert; zusätzliche localStorage-Kopie fehlgeschlagen: ${error.message}`); }
+        catch (error) {
+          logActivity('IndexedDB gespeichert; zusätzliche localStorage-Kopie fehlgeschlagen.');
+          setStatus(`IndexedDB gespeichert; zusätzliche localStorage-Kopie fehlgeschlagen: ${error.message}`);
+        }
       }
-      if (showSavedStatus) setStatus(`Lokal gespeichert: ${path}`);
+      if (showSavedStatus) {
+        logActivity('Datei lokal gespeichert.');
+        setStatus(`Lokal gespeichert: ${path}`);
+      }
       requestCompile('save', { repo, branch });
     };
-    const result = saveQueue.catch(() => {}).then(save);
+    const result = saveQueue.catch(() => {}).then(save).then((value) => {
+      saveFailureLogged = false;
+      return value;
+    }, (error) => {
+      if (!saveFailureLogged) logActivity('Lokales Speichern fehlgeschlagen.');
+      saveFailureLogged = true;
+      throw error;
+    });
     saveQueue = result;
     return result;
   }
@@ -1447,7 +1462,11 @@
             try {
               await selectFile(item.path, controller.signal);
             } catch (error) {
-              if (!controller.signal.aborted) setStatus(`Datei konnte nicht geladen werden: ${error.message}`);
+              if (controller.signal.aborted) logActivity('Dateiauswahl abgebrochen.');
+              else {
+                logActivity('Datei konnte nicht geladen werden.');
+                setStatus(`Datei konnte nicht geladen werden: ${error.message}`);
+              }
             } finally {
               if (fileLoadRequest === controller) fileLoadRequest = undefined;
             }
@@ -1524,10 +1543,12 @@
       let files = [];
       try { projects = await readAllRecords('projects'); }
       catch (error) {
+        logActivity('IndexedDB-Projekte konnten nicht gelesen werden; lokale Projektübersicht wird verwendet.');
         setStatus(`IndexedDB-Projekte konnten nicht gelesen werden: ${error.message}`);
       }
       try { files = await readAllRecords('files'); }
       catch (error) {
+        logActivity('IndexedDB-Dateien konnten nicht gelesen werden; lokale Projektübersicht wird verwendet.');
         setStatus(`IndexedDB-Dateien konnten nicht gelesen werden; localStorage-Projekte werden angezeigt: ${error.message}`);
       }
       const catalog = readProjectCatalog();
@@ -1580,6 +1601,7 @@
         dashboardList.appendChild(card);
       }
     } catch (error) {
+      logActivity('Lokale Projektübersicht konnte nicht geladen werden.');
       dashboardEmpty.hidden = false;
       dashboardEmpty.textContent = `Lokale Projektübersicht konnte nicht geladen werden: ${error.message}`;
       setStatus(dashboardEmpty.textContent);
@@ -1595,7 +1617,10 @@
     const nextBranch = project.branch || 'main';
     let records = [];
     try { records = await readAllRecords('files'); }
-    catch (error) { setStatus(`IndexedDB nicht verfügbar; lokale Kopien aus localStorage werden verwendet: ${error.message}`); }
+    catch (error) {
+      logActivity('IndexedDB-Dateien konnten nicht gelesen werden; lokale Kopien aus localStorage werden verwendet.');
+      setStatus(`IndexedDB nicht verfügbar; lokale Kopien aus localStorage werden verwendet: ${error.message}`);
+    }
     const localRecords = records.filter((record) => record.repo === (nextRepo || 'local') && record.branch === nextBranch);
     const paths = [...new Set([...(project.paths || []), ...localRecords.map((record) => record.path)])].sort();
     repoName = nextRepo;
@@ -1641,12 +1666,12 @@
       clearTimeout(saveTimer);
       await persistCurrentFile();
     }
-    if (signal?.aborted) return;
+    if (signal?.aborted) { logActivity('Dateiauswahl abgebrochen.'); return; }
     let saved;
     try { saved = await readStoredFile(repoName, branchName, path); }
     catch (error) { throw new Error(`Lokaler Inhalt konnte nicht geladen werden: ${error.message}`); }
     const fallback = localStorage.getItem(`latex_ipad_document:${repoName}:${branchName}:${path}`);
-    if (signal?.aborted) return;
+    if (signal?.aborted) { logActivity('Dateiauswahl abgebrochen.'); return; }
     let content = saved?.content ?? fallback;
     if (content === null || content === undefined) {
       if (!token || !navigator.onLine) {
@@ -1656,7 +1681,10 @@
       const encodedPath = path.split('/').map(encodeURIComponent).join('/');
       const response = await githubApi(`/repos/${repoName.split('/').map(encodeURIComponent).join('/')}/contents/${encodedPath}?ref=${encodeURIComponent(branchName)}`, 'application/vnd.github.raw', signal);
       content = await response.text();
-      if (token !== currentToken || signal?.aborted) return;
+      if (token !== currentToken || signal?.aborted) {
+        logActivity(signal?.aborted ? 'Dateiauswahl abgebrochen.' : 'Dateiauswahl verworfen: GitHub-Anmeldung geändert.');
+        return;
+      }
       if (isGitLfsPointer(content)) throw new Error(`Git-LFS-Datei wird nicht unterstützt: ${path}`);
     }
     activePath = path;
@@ -1675,6 +1703,7 @@
       updatedAt: Date.now()
     });
     setStatus(`Datei geladen: ${path}`);
+    logActivity('Datei im Editor geöffnet.');
   }
 
   function isGitLfsPointer(content) {
@@ -1881,14 +1910,20 @@
       tree.push(...localOnly);
       validateTree(tree);
       for (const record of files) await storeFile(record);
-      if (token !== currentToken || signal?.aborted) return false;
+      if (token !== currentToken || signal?.aborted) {
+        logActivity(signal?.aborted ? 'Repository-Öffnen abgebrochen.' : 'Repository-Öffnen verworfen: GitHub-Anmeldung geändert.');
+        return false;
+      }
       const targetBranch = nextBranch || preferredBranch || 'main';
       const sameContext = nextRepo === repoName && targetBranch === branchName;
       if (!sameContext) {
         textarea.readOnly = true;
         if (monacoEditor) monacoEditor.updateOptions({ readOnly: true });
         try {
-          if (token !== currentToken || signal?.aborted) return false;
+          if (token !== currentToken || signal?.aborted) {
+            logActivity(signal?.aborted ? 'Repository-Öffnen abgebrochen.' : 'Repository-Öffnen verworfen: GitHub-Anmeldung geändert.');
+            return false;
+          }
         } finally {
           textarea.readOnly = false;
           if (monacoEditor) monacoEditor.updateOptions({ readOnly: false });
@@ -2066,7 +2101,7 @@
     logActivity('Repository-Auswahl wird geladen.');
     try {
       const repositories = await githubPages('/user/repos?per_page=100&affiliation=owner,collaborator,organization_member&sort=full_name', controller.signal);
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) { logActivity('Repository-Auswahl abgebrochen.'); return; }
       const countText = repositories.length === 1 ? '1 verfügbares Repository.' : `${repositories.length} verfügbare Repositories.`;
       logActivity(`Repository-Auswahl geladen (${repositories.length} verfügbar).`);
       repoCount.textContent = countText;
@@ -2158,10 +2193,10 @@
           signal: controller.signal
         });
       } catch (error) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) { logActivity('GitHub-Anmeldung abgebrochen.'); return; }
         throw new Error('GitHub ist nicht erreichbar. Bitte Internetverbindung prüfen und erneut versuchen.');
       }
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) { logActivity('GitHub-Anmeldung abgebrochen.'); return; }
       if (response.status === 401) throw new Error('GitHub hat das Token abgelehnt. Bitte Gültigkeit und Ablaufdatum prüfen.');
       if (!response.ok) throw new Error(`GitHub konnte das Token nicht prüfen (HTTP ${response.status}). Bitte später erneut versuchen.`);
       sessionStorage.setItem('gh_token', candidate);
@@ -2217,12 +2252,14 @@
 
   async function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) {
+      logActivity('Service Worker wird von diesem Browser nicht unterstützt.');
       setStatus('Service Worker wird von diesem Browser nicht unterstützt.');
       return;
     }
     try {
       await navigator.serviceWorker.register('./sw.js');
     } catch (error) {
+      logActivity('Service Worker konnte nicht registriert werden.');
       setStatus(`Service Worker konnte nicht registriert werden: ${error.message}`);
     }
   }
@@ -2230,7 +2267,10 @@
   async function initialize() {
     try {
       clearLegacyOAuthCallback();
-      const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => null);
+      const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => {
+        logActivity('Lokale Datei konnte nicht aus IndexedDB gelesen werden; localStorage-Fallback wird verwendet.');
+        return null;
+      });
       const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`) ?? (!repoName ? localStorage.getItem('latex_ipad_document') : null);
       textarea.value = saved?.content ?? fallback ?? DEFAULT_DOCUMENT;
       activeFileLoaded = saved?.content !== undefined && saved?.content !== null || fallback !== null;
@@ -2245,6 +2285,7 @@
       updateLoginButton();
       setStatus(navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.');
     } catch (error) {
+      logActivity('App-Initialisierung fehlgeschlagen.');
       setStatus(`App-Fehler: ${error.message}`);
       showError(error.message);
     }

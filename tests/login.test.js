@@ -266,6 +266,8 @@ test('Abbruch verwirft auch eine nachträglich erfolgreiche Token-Prüfung', asy
   await pending;
   assert.equal(app.values.has('gh_token'), false);
   assert.equal(app.elements['github-token'].value, '');
+  assert.ok(app.logs.includes('GitHub-Anmeldung abgebrochen.'));
+  assert.doesNotMatch(app.logs.join('\n'), /github_pat_test123/);
 });
 
 test('Alter OAuth-Token und Rücksprungdaten werden entfernt', () => {
@@ -526,6 +528,16 @@ test('Repository-Öffnen lädt alle regulären Dateien und meldet Git-LFS sowie 
   } });
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
+  const technicalLog = app.logs.join('\n');
+  for (const activity of [
+    'GitHub-Anmeldung erfolgreich.',
+    'Repository-Auswahl geladen',
+    'Repository in der Auswahl angefordert.',
+    'Repository wird geöffnet',
+    'Repository-Download abgeschlossen',
+    'Repository lokal gespeichert und im Editor geöffnet.'
+  ]) assert.ok(technicalLog.includes(activity), `Protokolleintrag fehlt: ${activity}`);
+  assert.doesNotMatch(technicalLog, /github_pat_test123|Main-Datei|version https:\/\/git-lfs/);
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Main-Datei');
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:data.bin'), undefined);
   assert.match(app.footer.textContent, /Git LFS/);
@@ -1020,6 +1032,7 @@ test('Abbruch während des Öffnens verändert das aktive Repository nicht', asy
   await pending;
   assert.equal(app.localValues.get('gh_current_repo'), 'alice/old');
   assert.equal(app.elements.editor.value, 'Ungespeichert');
+  assert.ok(app.logs.includes('Repository-Öffnen abgebrochen.'));
 });
 
 test('Ein leeres Repository wird ohne Baumabfrage geöffnet', async () => {
@@ -1053,6 +1066,8 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
   assert.equal(app.elements['dashboard'].hidden, true);
   assert.equal(app.elements.editor.value, 'Lokal gespeicherter Inhalt');
   assert.match(app.footer.textContent, /Offline-Projekt geöffnet/);
+  assert.ok(app.logs.includes('IndexedDB-Dateien konnten nicht gelesen werden; lokale Kopien aus localStorage werden verwendet.'));
+  assert.doesNotMatch(app.logs.join('\n'), /Lokal gespeicherter Inhalt/);
 });
 
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
