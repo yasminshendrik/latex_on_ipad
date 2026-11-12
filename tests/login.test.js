@@ -1261,7 +1261,11 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
     }
   });
   await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['toggle-sidebar'].hidden, true);
+  assert.equal(app.elements['open-dashboard'].hidden, true);
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements['toggle-sidebar'].hidden, false);
+  assert.equal(app.elements['open-dashboard'].hidden, false);
   assert.equal(app.elements['add-tex-file'].disabled, false);
   app.elements['add-tex-file'].handlers.click();
   assert.equal(app.elements['new-tex-file-dialog'].open, true);
@@ -1281,8 +1285,12 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   app.elements.editor.value = 'Offline weiterbearbeitet';
   await app.elements['save-btn'].handlers.click();
   await app.elements['open-dashboard'].handlers.click();
+  assert.equal(app.elements['toggle-sidebar'].hidden, true);
+  assert.equal(app.elements['open-dashboard'].hidden, true);
   app.context.navigator.onLine = false;
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements['toggle-sidebar'].hidden, false);
+  assert.equal(app.elements['open-dashboard'].hidden, false);
   assert.equal(app.elements.editor.value, 'Offline weiterbearbeitet');
   const rendered = [];
   const collectText = (node) => {
@@ -1329,6 +1337,12 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
   const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)[1];
   assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
+  const centerGroup = /<div class="toolbar-group" id="toolbar-center">([\s\S]*?)<\/div>/.exec(header)[1];
+  assert.ok(centerGroup.indexOf('id="open-dashboard"') < centerGroup.indexOf('id="save-btn"'));
+  assert.match(html, /#toolbar-center \{ justify-self: center; \}/);
+  assert.match(html, /#toolbar-right \{ justify-self: end; \}/);
+  assert.match(header, /id="toggle-sidebar"[^>]*hidden/);
+  assert.match(header, /id="open-dashboard"[^>]*hidden/);
   assert.ok(header.indexOf('id="toggle-preview"') > header.indexOf('id="save-btn"'));
   assert.match(header, /id="toggle-preview"[^>]*data-icon="course-book"[^>]*aria-label="Leseansicht umschalten"/);
   assert.match(html, /id="dashboard-open-repo" type="button">GitHub-Repository öffnen<\/button>/);

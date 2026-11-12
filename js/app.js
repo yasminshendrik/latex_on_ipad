@@ -16,6 +16,7 @@
     if (typeof window.__setCompilerLog === 'function') window.__setCompilerLog(text);
   };
   const sidebarToggle = document.getElementById('toggle-sidebar');
+  const dashboardButton = document.getElementById('open-dashboard');
   const sidebar = document.getElementById('sidebar');
   const sidebarResize = document.getElementById('sidebar-resize');
   const texOnlyFilter = document.getElementById('tex-only-filter');
@@ -1923,6 +1924,8 @@
   function showEditor() {
     dashboard.hidden = true;
     document.getElementById('main-container').hidden = false;
+    sidebarToggle.hidden = false;
+    dashboardButton.hidden = false;
     sidebarToggle.disabled = false;
     addTexFileButton.disabled = false;
   }
@@ -2820,7 +2823,7 @@
     branchSelect.value = branchName;
     try { await loadRepository(repoName, target); } catch (error) { showError(`Branch konnte nicht geladen werden: ${error.message}`); }
   });
-  document.getElementById('open-dashboard').addEventListener('click', async () => {
+  dashboardButton.addEventListener('click', async () => {
     try {
       if (activeFileLoaded) {
         clearTimeout(saveTimer);
@@ -2828,6 +2831,8 @@
       }
       document.getElementById('main-container').hidden = true;
       dashboard.hidden = false;
+      sidebarToggle.hidden = true;
+      dashboardButton.hidden = true;
       sidebarToggle.disabled = true;
       await refreshDashboard();
       logActivity('Zur Projektübersicht gewechselt.');
