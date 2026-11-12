@@ -1329,6 +1329,8 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
   const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)[1];
   assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
+  assert.ok(header.indexOf('id="toggle-preview"') > header.indexOf('id="save-btn"'));
+  assert.match(header, /id="toggle-preview"[^>]*data-icon="course-book"[^>]*aria-label="Leseansicht umschalten"/);
   assert.match(html, /id="dashboard-open-repo" type="button">GitHub-Repository öffnen<\/button>/);
   assert.match(html, /id="dashboard-create-repo" type="button">Neues GitHub-Repository<\/button>/);
   assert.match(footer, /id="gh-login-btn"[^>]*data-icon="github"/);
