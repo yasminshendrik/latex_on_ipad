@@ -1363,6 +1363,7 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
   const centerGroup = /<div class="toolbar-group" id="toolbar-center">([\s\S]*?)<\/div>/.exec(header)[1];
   assert.ok(centerGroup.indexOf('id="open-dashboard"') < centerGroup.indexOf('id="save-btn"'));
+  assert.match(centerGroup, /id="project-settings-button"/);
   assert.match(html, /#toolbar-center \{ justify-self: center; \}/);
   assert.match(html, /#toolbar-right \{ justify-self: end; \}/);
   assert.match(header, /id="toggle-sidebar"[^>]*hidden/);
