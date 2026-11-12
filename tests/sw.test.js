@@ -63,6 +63,8 @@ test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
   assert.ok(worker.addedAssets.includes('./js/engine/packs/packs-index.json'));
   assert.ok(worker.addedAssets.includes('./fonts/SAP-icons.woff2'));
   assert.ok(worker.addedAssets.includes('./fonts/LICENSE-APACHE-2.0.txt'));
+  assert.ok(worker.addedAssets.includes('./icons/github-mark.svg'));
+  assert.ok(worker.addedAssets.includes('./icons/LICENSE-OCTICONS-MIT.txt'));
   assert.ok(!worker.addedAssets.some((asset) => /(?:\.wasm|\.tar\.gz|pdfjs)/.test(asset)));
 });
 

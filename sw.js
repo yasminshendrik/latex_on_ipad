@@ -5,6 +5,8 @@ const ASSETS = [
   './manifest.json',
   './fonts/SAP-icons.woff2',
   './fonts/LICENSE-APACHE-2.0.txt',
+  './icons/github-mark.svg',
+  './icons/LICENSE-OCTICONS-MIT.txt',
   './js/app.js',
   './js/lint-worker.js',
   './js/tex-worker.js',

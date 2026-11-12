@@ -153,11 +153,11 @@
   function updateLoginButton() {
     if (token) {
       loginButton.textContent = 'Abmelden';
-      setButtonIcon(loginButton, 'sys-cancel', 'Von GitHub abmelden');
+      setButtonIcon(loginButton, 'github', 'Von GitHub abmelden');
       loginButton.setAttribute('data-connected', 'true');
     } else {
       loginButton.textContent = 'GitHub Login';
-      setButtonIcon(loginButton, 'connected', 'Mit GitHub verbinden');
+      setButtonIcon(loginButton, 'github', 'Mit GitHub verbinden');
       loginButton.removeAttribute('data-connected');
     }
   }

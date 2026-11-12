@@ -34,6 +34,11 @@
     button[data-icon="delete"]::before { content: "\e03d"; }
     button[data-icon="copy"]::before { content: "\e245"; }
     button[data-icon="accept"]::before { content: "\e05b"; }
+    button[data-icon="github"]::before {
+      content: ""; width: 20px; height: 20px; font-size: 0; background-color: currentColor;
+      -webkit-mask: url("./icons/github-mark.svg") center / contain no-repeat;
+      mask: url("./icons/github-mark.svg") center / contain no-repeat;
+    }
     button[data-icon="folder-blank"]::before { content: "\e08e"; }
     .file-readonly[data-icon="locked"]::before { content: "\e153"; }
     .file-select-button[data-icon] { width: 100%; min-width: 0; color: inherit; font-size: 14px; }
@@ -198,8 +203,8 @@
       <h1 id="dashboard-title">Lokale Projekte</h1>
       <p>Gespeicherte Projekte können ohne Internetverbindung weiterbearbeitet werden. GitHub-Zugriff ist separat und benötigt eine Verbindung.</p>
       <div id="dashboard-actions">
-        <button id="dashboard-open-repo" type="button" data-icon="source-code" aria-label="GitHub-Repository öffnen" title="GitHub-Repository öffnen">GitHub-Repository öffnen</button>
-        <button id="dashboard-create-repo" type="button" data-icon="add" aria-label="Neues GitHub-Repository erstellen" title="Neues GitHub-Repository erstellen">Neues GitHub-Repository</button>
+        <button id="dashboard-open-repo" type="button">GitHub-Repository öffnen</button>
+        <button id="dashboard-create-repo" type="button">Neues GitHub-Repository</button>
       </div>
       <p id="local-project-empty" role="status">Lokale Projekte werden geladen…</p>
       <div id="local-project-list"></div>
@@ -327,7 +332,7 @@
   </dialog>
   <footer>
     <div id="footer-actions">
-      <button id="gh-login-btn" type="button" data-icon="connected" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
+      <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
       <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
     </div>
     <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>

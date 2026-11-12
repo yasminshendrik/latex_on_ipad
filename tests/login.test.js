@@ -271,11 +271,13 @@ test('Gültiges Token wird geprüft, nur für die Sitzung gespeichert und bei Ab
   assert.equal(app.elements['github-token'].value, '');
   assert.equal(app.elements['github-login-dialog'].open, false);
   assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Von GitHub abmelden');
+  assert.equal(app.elements['gh-login-btn'].attributes['data-icon'], 'github');
   assert.equal(app.elements['gh-login-btn'].textContent, 'Abmelden');
   assert.equal(app.elements['repo-dialog'].open, true);
   app.elements['gh-login-btn'].handlers.click();
   assert.equal(app.values.has('gh_token'), false);
   assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Mit GitHub verbinden');
+  assert.equal(app.elements['gh-login-btn'].attributes['data-icon'], 'github');
 });
 
 test('GitHub-Repository öffnen startet ohne Token direkt die Anmeldung und setzt die Aktion fort', async () => {
@@ -1327,17 +1329,22 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
   const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)[1];
   assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
-  assert.match(footer, /id="gh-login-btn"[^>]*data-icon/);
+  assert.match(html, /id="dashboard-open-repo" type="button">GitHub-Repository öffnen<\/button>/);
+  assert.match(html, /id="dashboard-create-repo" type="button">Neues GitHub-Repository<\/button>/);
+  assert.match(footer, /id="gh-login-btn"[^>]*data-icon="github"/);
   assert.match(footer, /id="toggle-log"[^>]*data-icon/);
   assert.doesNotMatch(html, /id="repo-label"/);
   assert.match(html, /id="dashboard-open-repo"/);
   assert.match(html, /<details id="project-properties">[\s\S]*id="project-repo-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
   for (const [, attributes] of html.matchAll(/<button\b([^>]*)>/g)) {
+    if (/id="dashboard-(open-repo|create-repo)"/.test(attributes)) continue;
     assert.match(attributes, /data-icon=/);
     assert.match(attributes, /aria-label=/);
   }
   assert.match(html, /@font-face \{ font-family: "SAP-icons"/);
   assert.match(html, /button\[data-icon="save"\]::before \{ content: "\\e09a"/);
+  assert.match(html, /button\[data-icon="github"\]::before/);
+  assert.match(html, /mask: url\("\.\/icons\/github-mark\.svg"\)/);
 });
 
 test('Speichern bündelt geänderte Dateien und versionierte Projekteinstellungen in genau einem atomaren Commit', async () => {

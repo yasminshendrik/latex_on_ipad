@@ -42,6 +42,12 @@ Diese Komponenten werden nicht vom Projekt selbst entwickelt. Sie werden beim Ve
 - Lizenz: Apache-2.0; der Lizenztext liegt unter `fonts/LICENSE-APACHE-2.0.txt`.
 - Die Schrift wird lokal ausgeliefert und beim Installieren des Service Workers gecacht, damit Icons offline verfügbar sind.
 
+## GitHub-Mark (Primer Octicons)
+
+- Herkunft: [primer/octicons](https://github.com/primer/octicons), Datei `icons/mark-github-24.svg`, Revision `68ec2de8d0ddfcbb7497da01d0b7d98eb5593020`.
+- Lizenz: MIT; der Lizenztext liegt unter `icons/LICENSE-OCTICONS-MIT.txt`.
+- Das lokale SVG wird für die GitHub-Anmeldung verwendet und vom Service Worker offline vorgehalten.
+
 ## @unified-latex/unified-latex-util-pegjs 1.8.4
 
 - Lizenz: MIT (`js/UNIFIED-LATEX-LICENSE.txt`).
