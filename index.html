@@ -25,6 +25,7 @@
     button[data-icon="home"]::before { content: "\e070"; }
     button[data-icon="display"]::before { content: "\e1dd"; }
     button[data-icon="course-book"]::before { content: "\e096"; }
+    button[data-icon="settings"]::before { content: "\e00c"; }
     button[data-icon="save"]::before { content: "\e09a"; }
     button[data-icon="source-code"]::before { content: "\e244"; }
     button[data-icon="add"]::before { content: "\e058"; }
@@ -77,12 +78,11 @@
     .file-readonly { padding: 4px; color: #aaa; }
     .file-tree, .file-tree ul { margin: 0; padding-left: 20px; list-style: none; }
     .file-tree { padding-left: 0; }
-    #project-properties { flex: 0 0 auto; max-height: 42%; overflow: auto; border-top: 1px solid #444; background: #202021; }
-    #project-properties summary { padding: 10px 12px; color: #ddd; cursor: pointer; }
     #project-properties-content { padding: 0 12px 12px; font-size: 12px; }
-    #project-properties-content > label { display: block; margin-top: 10px; color: #bbb; }
+    #project-properties-content label { display: block; margin-top: 10px; color: #bbb; }
     #project-properties-content select { width: 100%; margin-top: 4px; font-size: 12px; }
     #project-properties-content p { margin: 6px 0; overflow-wrap: anywhere; }
+    #project-settings-close { margin: 8px 12px 0; }
     #project-repo-link { display: inline-block; margin: 4px 0; color: #8bcfff; overflow-wrap: anywhere; }
     #editor-container { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
     #editor-surface { flex: 1; min-height: 0; position: relative; }
@@ -99,8 +99,8 @@
     #preview-resize[hidden] { display: none; }
     #preview-resize::after { content: ''; width: 3px; height: 36px; border-radius: 2px; background: #888; }
     #preview-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
-    #github-login-dialog, #repo-dialog, #create-repo-dialog, #new-tex-file-dialog, #commit-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
-    #github-login-dialog::backdrop, #repo-dialog::backdrop, #create-repo-dialog::backdrop, #new-tex-file-dialog::backdrop, #commit-dialog::backdrop { background: rgba(0, 0, 0, .75); }
+    #github-login-dialog, #repo-dialog, #create-repo-dialog, #new-tex-file-dialog, #commit-dialog, #project-settings-dialog { width: min(440px, calc(100% - 32px)); max-height: 90%; overflow: auto; padding: 20px; border: 1px solid #666; border-radius: 8px; background: #252526; color: #eee; }
+    #github-login-dialog::backdrop, #repo-dialog::backdrop, #create-repo-dialog::backdrop, #new-tex-file-dialog::backdrop, #commit-dialog::backdrop, #project-settings-dialog::backdrop { background: rgba(0, 0, 0, .75); }
     #github-login-dialog label { display: block; margin-top: 12px; }
     #github-login-dialog input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid #888; border-radius: 4px; background: #1e1e1e; color: #fff; font-size: 16px; }
     #github-login-dialog a { color: #8bcfff; }
@@ -169,13 +169,13 @@
     #dashboard { color: var(--fiori-text); }
     #dashboard h1, #dashboard h2 { color: var(--fiori-text); }
     #dashboard p, #local-project-empty, .local-project p { color: var(--fiori-muted); }
-    .local-project, #sidebar, #project-properties, #lint-results, #compile-bar, #log-panel {
+    .local-project, #sidebar, #project-settings-dialog, #lint-results, #compile-bar, #log-panel {
       background: var(--fiori-surface); color: var(--fiori-text); border-color: var(--fiori-border);
     }
     #sidebar { border-right-color: var(--fiori-border); }
-    .sidebar-heading, #project-properties, #lint-results, #compile-bar, #log-panel { border-color: var(--fiori-border); }
-    .sidebar-heading, #project-properties summary, #project-properties-content, #app-status { color: var(--fiori-text); }
-    #project-properties { background: var(--fiori-surface); }
+    .sidebar-heading, #project-settings-dialog, #lint-results, #compile-bar, #log-panel { border-color: var(--fiori-border); }
+    .sidebar-heading, #project-properties-content, #app-status { color: var(--fiori-text); }
+    #project-settings-dialog { background: var(--fiori-surface); }
     #project-repo-link, #github-login-dialog a { color: var(--fiori-brand); }
     .file-select-button[aria-current="page"] { color: var(--fiori-brand-hover); background: var(--fiori-selected); }
     .folder-toggle, .file-select-button { color: var(--fiori-text); }
@@ -200,14 +200,14 @@
   <header>
     <div class="toolbar-group" id="toolbar-left">
       <button id="toggle-sidebar" type="button" disabled hidden data-icon="menu2" aria-label="Sidebar umschalten" title="Sidebar umschalten">Sidebar umschalten</button>
-      <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
+      <button id="project-settings-button" type="button" hidden data-icon="settings" aria-label="Projekteinstellungen öffnen" title="Projekteinstellungen">Projekteinstellungen</button>
     </div>
     <div class="toolbar-group" id="toolbar-center">
       <button id="open-dashboard" type="button" hidden data-icon="home" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
-      <button id="save-btn" type="button" data-icon="save" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
+      <button id="save-btn" type="button" hidden data-icon="save" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
     </div>
     <div class="toolbar-group" id="toolbar-right">
-      <button id="toggle-preview" type="button" data-icon="course-book" aria-label="Leseansicht umschalten" title="Leseansicht umschalten">Leseansicht</button>
+      <button id="toggle-preview" type="button" hidden data-icon="course-book" aria-label="Leseansicht umschalten" title="Leseansicht umschalten">Leseansicht</button>
     </div>
   </header>
   <section id="dashboard" aria-labelledby="dashboard-title">
@@ -227,22 +227,6 @@
       <div class="sidebar-heading"><span>PROJEKTDATEIEN</span><button id="add-tex-file" type="button" disabled data-icon="add" aria-label="Neue TeX-Datei anlegen" title="Neue TeX-Datei anlegen">Neue TeX-Datei</button></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
-      <details id="project-properties">
-        <summary>Projekteigenschaften</summary>
-        <div id="project-properties-content">
-          <p>Projekt: <strong id="project-name">Lokales Projekt</strong></p>
-          <p>Branch: <span id="project-branch">main</span></p>
-          <a id="project-repo-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Repository auf GitHub öffnen</a>
-          <label for="main-file-select">Compiler-Hauptdatei</label>
-          <select id="main-file-select"><option value="">main.tex</option></select>
-          <label for="project-hyphenation">Silbentrennung</label>
-          <select id="project-hyphenation">
-            <option value="auto">Automatisch anhand des Dokuments</option>
-            <option value="ngerman">Deutsch (ngerman)</option>
-            <option value="english">Englisch (english)</option>
-          </select>
-        </div>
-      </details>
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <section id="editor-container">
@@ -262,6 +246,27 @@
       <div id="pdf-pages"></div>
     </section>
   </main>
+  <dialog id="project-settings-dialog" aria-labelledby="project-settings-title">
+    <h2 id="project-settings-title">Projekteinstellungen</h2>
+    <div id="project-properties-content">
+      <p>Projekt: <strong id="project-name">Lokales Projekt</strong></p>
+      <p>Branch: <span id="project-branch">main</span></p>
+      <div id="branch-selector" hidden>
+        <label for="branch-select">Branch wechseln</label>
+        <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
+      </div>
+      <a id="project-repo-link" href="#" target="_blank" rel="noopener noreferrer" hidden>Repository auf GitHub öffnen</a>
+      <label for="main-file-select">Compiler-Hauptdatei</label>
+      <select id="main-file-select"><option value="">main.tex</option></select>
+      <label for="project-hyphenation">Silbentrennung</label>
+      <select id="project-hyphenation">
+        <option value="auto">Automatisch anhand des Dokuments</option>
+        <option value="ngerman">Deutsch (ngerman)</option>
+        <option value="english">Englisch (english)</option>
+      </select>
+    </div>
+    <button id="project-settings-close" type="button" data-icon="sys-cancel" aria-label="Projekteinstellungen schließen" title="Projekteinstellungen schließen">Schließen</button>
+  </dialog>
   <dialog id="github-login-dialog" aria-labelledby="github-login-title" aria-describedby="github-login-help">
     <h2 id="github-login-title">Mit GitHub verbinden</h2>
     <p id="github-login-help">Gib ein Fine-grained Personal Access Token ein, kein GitHub-Passwort. Du kannst es für diese App-Adresse in Apple Passwörter speichern und von dort einfügen.</p>

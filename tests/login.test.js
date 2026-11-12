@@ -11,7 +11,8 @@ const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
-  'repo-create', 'branch-select', 'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
+  'repo-create', 'branch-select', 'branch-selector', 'project-settings-button', 'project-settings-dialog', 'project-settings-close',
+  'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
   'add-tex-file', 'new-tex-file-dialog', 'new-tex-file-form', 'new-tex-file-folder', 'new-tex-file-name', 'new-tex-file-error',
   'new-tex-file-submit', 'new-tex-file-cancel', 'commit-dialog', 'commit-form', 'commit-message', 'commit-error', 'commit-submit', 'commit-cancel',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
@@ -83,6 +84,9 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   const commitDialog = elements['commit-dialog'];
   commitDialog.showModal = () => { commitDialog.open = true; };
   commitDialog.close = () => { commitDialog.open = false; };
+  const projectSettingsDialog = elements['project-settings-dialog'];
+  projectSettingsDialog.showModal = () => { projectSettingsDialog.open = true; };
+  projectSettingsDialog.close = () => { projectSettingsDialog.open = false; };
   elements['github-login-form'].reset = () => { elements['github-token'].value = ''; };
   elements['create-repo-form'].reset = () => {};
   elements['new-tex-file-form'].reset = () => { elements['new-tex-file-name'].value = ''; };
@@ -554,6 +558,12 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   app.context.navigator.onLine = true;
   await submit(app, 'github_pat_test123');
   await app.elements['repo-list'].children[0].handlers.click();
+  assert.equal(app.elements['project-settings-button'].hidden, false);
+  assert.equal(app.elements['branch-selector'].hidden, true);
+  app.elements['project-settings-button'].handlers.click();
+  assert.equal(app.elements['project-settings-dialog'].open, true);
+  app.elements['project-settings-close'].handlers.click();
+  assert.equal(app.elements['project-settings-dialog'].open, false);
   let root = app.elements['file-list'].children[0].children[0].children[1];
   const chapter = root.children[0].children[0];
   const main = root.children[1].children[0];
@@ -804,6 +814,7 @@ test('Repo- und Branchwechsel speichern Änderungen unter dem alten Kontext', as
   app.elements.editor.value = 'Alter Inhalt';
   app.elements.editor.handlers.input();
   await app.elements['repo-list'].children[0].handlers.click();
+  assert.equal(app.elements['branch-selector'].hidden, false);
   assert.equal(app.localValues.get('latex_ipad_document:alice/old:main:main.tex'), 'Alter Inhalt');
   assert.equal(app.elements.editor.value, 'Neuer Inhalt');
   app.elements.editor.value = 'Main geändert';
@@ -1263,9 +1274,16 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.elements['toggle-sidebar'].hidden, true);
   assert.equal(app.elements['open-dashboard'].hidden, true);
+  assert.equal(app.elements['project-settings-button'].hidden, true);
+  assert.equal(app.elements['save-btn'].hidden, true);
+  assert.equal(app.elements['toggle-preview'].hidden, true);
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
   assert.equal(app.elements['toggle-sidebar'].hidden, false);
   assert.equal(app.elements['open-dashboard'].hidden, false);
+  assert.equal(app.elements['project-settings-button'].hidden, false);
+  assert.equal(app.elements['save-btn'].hidden, false);
+  assert.equal(app.elements['toggle-preview'].hidden, false);
+  assert.equal(app.elements['branch-selector'].hidden, true);
   assert.equal(app.elements['add-tex-file'].disabled, false);
   app.elements['add-tex-file'].handlers.click();
   assert.equal(app.elements['new-tex-file-dialog'].open, true);
@@ -1287,10 +1305,16 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   await app.elements['open-dashboard'].handlers.click();
   assert.equal(app.elements['toggle-sidebar'].hidden, true);
   assert.equal(app.elements['open-dashboard'].hidden, true);
+  assert.equal(app.elements['project-settings-button'].hidden, true);
+  assert.equal(app.elements['save-btn'].hidden, true);
+  assert.equal(app.elements['toggle-preview'].hidden, true);
   app.context.navigator.onLine = false;
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
   assert.equal(app.elements['toggle-sidebar'].hidden, false);
   assert.equal(app.elements['open-dashboard'].hidden, false);
+  assert.equal(app.elements['project-settings-button'].hidden, false);
+  assert.equal(app.elements['save-btn'].hidden, false);
+  assert.equal(app.elements['toggle-preview'].hidden, false);
   assert.equal(app.elements.editor.value, 'Offline weiterbearbeitet');
   const rendered = [];
   const collectText = (node) => {
@@ -1343,6 +1367,11 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(html, /#toolbar-right \{ justify-self: end; \}/);
   assert.match(header, /id="toggle-sidebar"[^>]*hidden/);
   assert.match(header, /id="open-dashboard"[^>]*hidden/);
+  assert.match(header, /id="project-settings-button"[^>]*hidden/);
+  assert.match(header, /id="save-btn"[^>]*hidden/);
+  assert.match(header, /id="toggle-preview"[^>]*hidden/);
+  assert.doesNotMatch(header, /id="branch-select"/);
+  assert.match(html, /<dialog id="project-settings-dialog"[\s\S]*id="branch-selector" hidden[\s\S]*id="project-repo-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
   assert.ok(header.indexOf('id="toggle-preview"') > header.indexOf('id="save-btn"'));
   assert.match(header, /id="toggle-preview"[^>]*data-icon="course-book"[^>]*aria-label="Leseansicht umschalten"/);
   assert.match(html, /id="dashboard-open-repo" type="button">GitHub-Repository öffnen<\/button>/);
@@ -1351,7 +1380,6 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(footer, /id="toggle-log"[^>]*data-icon/);
   assert.doesNotMatch(html, /id="repo-label"/);
   assert.match(html, /id="dashboard-open-repo"/);
-  assert.match(html, /<details id="project-properties">[\s\S]*id="project-repo-link"[^>]*target="_blank"[^>]*rel="noopener noreferrer"/);
   for (const [, attributes] of html.matchAll(/<button\b([^>]*)>/g)) {
     if (/id="dashboard-(open-repo|create-repo)"/.test(attributes)) continue;
     assert.match(attributes, /data-icon=/);

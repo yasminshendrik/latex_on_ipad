@@ -34,6 +34,8 @@
   const pdfPages = document.getElementById('pdf-pages');
   const previewContainer = document.getElementById('preview-container');
   const previewResizer = document.getElementById('preview-resize');
+  const previewButton = document.getElementById('toggle-preview');
+  const saveButton = document.getElementById('save-btn');
   const loginButton = document.getElementById('gh-login-btn');
   const loginDialog = document.getElementById('github-login-dialog');
   const loginForm = document.getElementById('github-login-form');
@@ -59,7 +61,11 @@
   const dashboard = document.getElementById('dashboard');
   const dashboardList = document.getElementById('local-project-list');
   const dashboardEmpty = document.getElementById('local-project-empty');
+  const projectSettingsButton = document.getElementById('project-settings-button');
+  const projectSettingsDialog = document.getElementById('project-settings-dialog');
+  const projectSettingsClose = document.getElementById('project-settings-close');
   const branchSelect = document.getElementById('branch-select');
+  const branchSelector = document.getElementById('branch-selector');
   const addTexFileButton = document.getElementById('add-tex-file');
   const newTexFileDialog = document.getElementById('new-tex-file-dialog');
   const newTexFileForm = document.getElementById('new-tex-file-form');
@@ -1926,6 +1932,9 @@
     document.getElementById('main-container').hidden = false;
     sidebarToggle.hidden = false;
     dashboardButton.hidden = false;
+    projectSettingsButton.hidden = false;
+    saveButton.hidden = false;
+    previewButton.hidden = false;
     sidebarToggle.disabled = false;
     addTexFileButton.disabled = false;
   }
@@ -2133,6 +2142,7 @@
     branchSelect.appendChild(option);
     branchSelect.value = branchName;
     branchSelect.disabled = true;
+    branchSelector.hidden = true;
     updateProjectProperties();
     localStorage.setItem('gh_current_repo', repoName);
     localStorage.setItem('gh_current_branch', branchName);
@@ -2525,6 +2535,7 @@
         const option = document.createElement('option'); option.value = branch.name; option.textContent = branch.name; return option;
       }));
       branchSelect.value = nextBranch || '';
+      branchSelector.hidden = branches.length <= 1;
       sidebarItems = tree;
       if (!sameContext) collapsedFolders.clear();
       renderSidebar();
@@ -2823,6 +2834,8 @@
     branchSelect.value = branchName;
     try { await loadRepository(repoName, target); } catch (error) { showError(`Branch konnte nicht geladen werden: ${error.message}`); }
   });
+  projectSettingsButton.addEventListener('click', () => projectSettingsDialog.showModal());
+  projectSettingsClose.addEventListener('click', () => projectSettingsDialog.close());
   dashboardButton.addEventListener('click', async () => {
     try {
       if (activeFileLoaded) {
@@ -2833,6 +2846,10 @@
       dashboard.hidden = false;
       sidebarToggle.hidden = true;
       dashboardButton.hidden = true;
+      projectSettingsButton.hidden = true;
+      saveButton.hidden = true;
+      previewButton.hidden = true;
+      if (projectSettingsDialog.open) projectSettingsDialog.close();
       sidebarToggle.disabled = true;
       await refreshDashboard();
       logActivity('Zur Projektübersicht gewechselt.');
