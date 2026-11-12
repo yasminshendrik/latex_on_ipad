@@ -153,11 +153,11 @@
   function updateLoginButton() {
     if (token) {
       loginButton.textContent = 'Abmelden';
-      setButtonIcon(loginButton, '⏏', 'Von GitHub abmelden');
+      setButtonIcon(loginButton, 'sys-cancel', 'Von GitHub abmelden');
       loginButton.setAttribute('data-connected', 'true');
     } else {
       loginButton.textContent = 'GitHub Login';
-      setButtonIcon(loginButton, '↪', 'Mit GitHub verbinden');
+      setButtonIcon(loginButton, 'connected', 'Mit GitHub verbinden');
       loginButton.removeAttribute('data-connected');
     }
   }
@@ -2084,7 +2084,7 @@
         const open = document.createElement('button');
         open.type = 'button';
         open.textContent = 'Lokal öffnen';
-        setButtonIcon(open, '↪', `Lokal öffnen: ${title.textContent}`);
+        setButtonIcon(open, 'folder-blank', `Lokal öffnen: ${title.textContent}`);
         open.addEventListener('click', () => openLocalProject(project).catch((error) => {
           logActivity('Lokales Projekt konnte nicht geöffnet werden.');
           setStatus(`Lokales Projekt konnte nicht geöffnet werden: ${error.message}`);
@@ -2591,7 +2591,7 @@
       ? pendingRepoCreation.initialized ? 'Repository erneut öffnen' : 'Initialisierung fortsetzen'
       : 'Privates Repository erstellen';
     createRepoSubmit.textContent = label;
-    setButtonIcon(createRepoSubmit, pendingRepoCreation?.name === createRepoName.value.trim() ? '↻' : '＋', label);
+    setButtonIcon(createRepoSubmit, pendingRepoCreation?.name === createRepoName.value.trim() ? 'refresh' : 'add', label);
   }
 
   createRepoName.addEventListener('input', updateCreateRepoButton);

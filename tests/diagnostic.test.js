@@ -95,17 +95,17 @@ test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funk
   assert.equal(app.copied[0].command, 'copy');
   assert.match(app.copied[0].text, /Diagnoseprotokoll gestartet/);
   assert.equal(message.textContent, '');
-  assert.equal(copyButton.attributes['data-icon'], '✓');
+  assert.equal(copyButton.attributes['data-icon'], 'accept');
   assert.equal(copyButton.attributes['aria-label'], 'Protokoll kopiert');
   const firstTimerId = [...app.timers.keys()][0];
   await copyButton.handlers.click();
   assert.equal(app.timers.has(firstTimerId), false);
-  assert.equal(copyButton.attributes['data-icon'], '✓');
+  assert.equal(copyButton.attributes['data-icon'], 'accept');
   const [timerId, feedback] = [...app.timers.entries()][0];
   assert.equal(feedback.delay, 1500);
   feedback.callback();
   assert.equal(app.timers.has(timerId), false);
-  assert.equal(copyButton.attributes['data-icon'], '▣');
+  assert.equal(copyButton.attributes['data-icon'], 'copy');
   assert.equal(copyButton.attributes['aria-label'], 'Aktuelles Protokoll kopieren');
 
   const clearButton = heading.children.find((child) => child.textContent === 'Leeren');
