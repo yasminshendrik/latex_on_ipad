@@ -36,6 +36,12 @@ Diese Komponenten werden nicht vom Projekt selbst entwickelt. Sie werden beim Ve
 - Lizenz: Apache-2.0 (`js/pdfjs/LICENSE-pdfjs.txt`).
 - Dient der lokalen Darstellung des erzeugten PDFs im Canvas.
 
+## SAP Icons (SAP Theming Base Content)
+
+- Herkunft: [SAP/theming-base-content](https://github.com/SAP/theming-base-content), Datei `content/Base/baseLib/baseTheme/fonts/SAP-icons.woff2`, Revision `b8dc6f16557e5b4b3dc4d07e763c8b46178ab9fe`.
+- Lizenz: Apache-2.0; der Lizenztext liegt unter `fonts/LICENSE-APACHE-2.0.txt`.
+- Die Schrift wird lokal ausgeliefert und beim Installieren des Service Workers gecacht, damit Icons offline verfügbar sind.
+
 ## @unified-latex/unified-latex-util-pegjs 1.8.4
 
 - Lizenz: MIT (`js/UNIFIED-LATEX-LICENSE.txt`).

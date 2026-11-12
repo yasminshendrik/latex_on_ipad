@@ -3,6 +3,8 @@ const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './fonts/SAP-icons.woff2',
+  './fonts/LICENSE-APACHE-2.0.txt',
   './js/app.js',
   './js/lint-worker.js',
   './js/tex-worker.js',

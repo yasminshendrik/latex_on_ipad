@@ -7,6 +7,7 @@
   <title>LaTeX iPad PWA</title>
   <link rel="manifest" href="manifest.json">
   <style>
+    @font-face { font-family: "SAP-icons"; src: url("./fonts/SAP-icons.woff2") format("woff2"); font-display: block; }
     * { box-sizing: border-box; }
     html, body { height: 100%; margin: 0; }
     body { display: flex; flex-direction: column; overflow: hidden; background: #1e1e1e; color: #ddd; font: 15px -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -16,10 +17,27 @@
     select { background: #3c3c3c; }
     button:active { background: #005999; }
     button[data-icon] { width: 42px; min-width: 42px; padding: 7px; overflow: hidden; color: transparent; font-size: 0; }
-    button[data-icon]::before { content: attr(data-icon); display: inline-block; color: #fff; font: 20px/1 "Segoe UI Symbol", "Apple Symbols", sans-serif; }
+    button[data-icon]::before { display: inline-block; color: currentColor; font: 20px/1 "SAP-icons"; }
+    button[data-icon="menu2"]::before { content: "\e1de"; }
+    button[data-icon="home"]::before { content: "\e070"; }
+    button[data-icon="display"]::before { content: "\e1dd"; }
+    button[data-icon="save"]::before { content: "\e09a"; }
+    button[data-icon="source-code"]::before { content: "\e244"; }
+    button[data-icon="add"]::before { content: "\e058"; }
+    button[data-icon="connected"]::before { content: "\e20b"; }
+    button[data-icon="sys-cancel"]::before { content: "\e1c7"; }
+    button[data-icon="refresh"]::before { content: "\e010"; }
+    button[data-icon="cloud"]::before { content: "\e21d"; }
+    button[data-icon="compare"]::before { content: "\e086"; }
+    button[data-icon="upload"]::before { content: "\e12e"; }
+    button[data-icon="log"]::before { content: "\e022"; }
+    button[data-icon="folder-blank"]::before { content: "\e08e"; }
+    .file-readonly[data-icon="locked"]::before { content: "\e153"; }
+    .file-select-button[data-icon] { width: 100%; min-width: 0; color: inherit; font-size: 14px; }
+    .file-select-button[data-icon]::before, .folder-toggle[data-icon]::before, .file-readonly[data-icon]::before { margin-right: 6px; color: #0a6ed1; font-size: 15px; }
+    .folder-toggle[data-icon] { width: 100%; min-width: 0; color: inherit; font-size: 14px; }
     button[data-icon]:focus-visible { outline: 2px solid #50b6ff; outline-offset: 2px; }
     button[data-connected="true"] { background: #238636; }
-    button.file-select-button::before { content: '▤'; margin-right: 6px; color: #b7e3ff; font: 15px/1 "Segoe UI Symbol", "Apple Symbols", sans-serif; }
     button.file-select-button { font-size: 14px; }
     #main-container { flex: 1; min-height: 0; display: flex; position: relative; }
     #main-container[hidden], #dashboard[hidden] { display: none; }
@@ -108,18 +126,68 @@
       footer { flex-wrap: wrap; }
       #app-status { flex-basis: 100%; order: 1; }
     }
+    :root {
+      color-scheme: light;
+      --fiori-brand: #0070f2;
+      --fiori-brand-hover: #0057d2;
+      --fiori-text: #1d2d3e;
+      --fiori-muted: #556b82;
+      --fiori-border: #d5dadd;
+      --fiori-surface: #fff;
+      --fiori-background: #f5f6f7;
+      --fiori-selected: #e5f0ff;
+    }
+    body { background: var(--fiori-background); color: var(--fiori-text); }
+    header, footer { background: var(--fiori-surface); color: var(--fiori-text); border-color: var(--fiori-border); }
+    button, select { border-radius: 0.5rem; background: var(--fiori-brand); color: #fff; }
+    button:hover { background: var(--fiori-brand-hover); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    select, input, textarea { border-color: var(--fiori-border); }
+    select { background: var(--fiori-surface); color: var(--fiori-text); }
+    button[data-icon]::before { color: #fff; }
+    button[data-icon]:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
+      outline: 2px solid var(--fiori-brand); outline-offset: 2px;
+    }
+    #dashboard { color: var(--fiori-text); }
+    #dashboard h1, #dashboard h2 { color: var(--fiori-text); }
+    #dashboard p, #local-project-empty, .local-project p { color: var(--fiori-muted); }
+    .local-project, #sidebar, #project-properties, #lint-results, #compile-bar, #log-panel {
+      background: var(--fiori-surface); color: var(--fiori-text); border-color: var(--fiori-border);
+    }
+    #sidebar { border-right-color: var(--fiori-border); }
+    .sidebar-heading, #project-properties, #lint-results, #compile-bar, #log-panel { border-color: var(--fiori-border); }
+    .sidebar-heading, #project-properties summary, #project-properties-content, #app-status { color: var(--fiori-text); }
+    #project-properties { background: var(--fiori-surface); }
+    #project-repo-link, #github-login-dialog a { color: var(--fiori-brand); }
+    .file-select-button[aria-current="page"] { color: var(--fiori-brand-hover); background: var(--fiori-selected); }
+    .folder-toggle, .file-select-button { color: var(--fiori-text); }
+    #editor { background: var(--fiori-surface); color: var(--fiori-text); }
+    #preview-container { background: var(--fiori-surface); }
+    #github-login-dialog, #repo-dialog, #create-repo-dialog, #new-tex-file-dialog, #commit-dialog, #sync-conflict-dialog {
+      border-color: var(--fiori-border); border-radius: 0.75rem; background: var(--fiori-surface); color: var(--fiori-text);
+      box-shadow: 0 0.5rem 1.5rem rgba(29, 45, 62, .18);
+    }
+    #github-login-dialog::backdrop, #repo-dialog::backdrop, #create-repo-dialog::backdrop, #new-tex-file-dialog::backdrop,
+    #commit-dialog::backdrop, #sync-conflict-dialog::backdrop { background: rgba(29, 45, 62, .4); }
+    #github-login-dialog input, #create-repo-dialog input, #new-tex-file-dialog input, #new-tex-file-dialog select,
+    #commit-dialog input { border-radius: 0.375rem; background: var(--fiori-surface); color: var(--fiori-text); }
+    #github-login-error, #repo-error, #create-repo-error, #new-tex-file-error, #commit-error { color: #aa0808; }
+    #commit-dialog p, #create-repo-status, #preview-status { color: var(--fiori-muted); }
+    #sync-conflict-dialog pre { background: var(--fiori-background); color: var(--fiori-text); }
+    #sidebar-resize::after, #preview-resize::after { background: #8396a8; }
+    #app-log { color: var(--fiori-text); }
   </style>
 </head>
 <body>
   <header>
     <div class="toolbar-group">
-      <button id="toggle-sidebar" type="button" disabled data-icon="☰" aria-label="Sidebar umschalten" title="Sidebar umschalten">Sidebar umschalten</button>
-      <button id="open-dashboard" type="button" data-icon="⌂" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
+      <button id="toggle-sidebar" type="button" disabled data-icon="menu2" aria-label="Sidebar umschalten" title="Sidebar umschalten">Sidebar umschalten</button>
+      <button id="open-dashboard" type="button" data-icon="home" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
       <select id="branch-select" aria-label="GitHub Branch"><option value="main">main</option></select>
     </div>
     <div class="toolbar-group">
-      <button id="toggle-preview" type="button" data-icon="▣" aria-label="Vorschau umschalten" title="Vorschau umschalten">Vorschau</button>
-      <button id="save-btn" type="button" data-icon="⬇" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
+      <button id="toggle-preview" type="button" data-icon="display" aria-label="Vorschau umschalten" title="Vorschau umschalten">Vorschau</button>
+      <button id="save-btn" type="button" data-icon="save" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
     </div>
   </header>
   <section id="dashboard" aria-labelledby="dashboard-title">
@@ -127,8 +195,8 @@
       <h1 id="dashboard-title">Lokale Projekte</h1>
       <p>Gespeicherte Projekte können ohne Internetverbindung weiterbearbeitet werden. GitHub-Zugriff ist separat und benötigt eine Verbindung.</p>
       <div id="dashboard-actions">
-        <button id="dashboard-open-repo" type="button" data-icon="↗" aria-label="GitHub-Repository öffnen" title="GitHub-Repository öffnen">GitHub-Repository öffnen</button>
-        <button id="dashboard-create-repo" type="button" data-icon="＋" aria-label="Neues GitHub-Repository erstellen" title="Neues GitHub-Repository erstellen">Neues GitHub-Repository</button>
+        <button id="dashboard-open-repo" type="button" data-icon="source-code" aria-label="GitHub-Repository öffnen" title="GitHub-Repository öffnen">GitHub-Repository öffnen</button>
+        <button id="dashboard-create-repo" type="button" data-icon="add" aria-label="Neues GitHub-Repository erstellen" title="Neues GitHub-Repository erstellen">Neues GitHub-Repository</button>
       </div>
       <p id="local-project-empty" role="status">Lokale Projekte werden geladen…</p>
       <div id="local-project-list"></div>
@@ -136,7 +204,7 @@
   </section>
   <main id="main-container" hidden>
     <aside id="sidebar">
-      <div class="sidebar-heading"><span>PROJEKTDATEIEN</span><button id="add-tex-file" type="button" disabled data-icon="＋" aria-label="Neue TeX-Datei anlegen" title="Neue TeX-Datei anlegen">Neue TeX-Datei</button></div>
+      <div class="sidebar-heading"><span>PROJEKTDATEIEN</span><button id="add-tex-file" type="button" disabled data-icon="add" aria-label="Neue TeX-Datei anlegen" title="Neue TeX-Datei anlegen">Neue TeX-Datei</button></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
       <details id="project-properties">
@@ -184,8 +252,8 @@
       <p>Das Token bleibt bis zur Abmeldung oder zum Ende der Sitzung im Sitzungsspeicher dieser App.</p>
       <p id="github-login-error" role="alert"></p>
       <div class="login-actions">
-        <button id="github-login-submit" type="submit" data-icon="↔" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">Verbinden</button>
-        <button id="github-login-cancel" type="button" data-icon="×" aria-label="Anmeldung abbrechen" title="Anmeldung abbrechen">Abbrechen</button>
+        <button id="github-login-submit" type="submit" data-icon="connected" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">Verbinden</button>
+        <button id="github-login-cancel" type="button" data-icon="sys-cancel" aria-label="Anmeldung abbrechen" title="Anmeldung abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
@@ -195,9 +263,9 @@
     <p id="repo-error" role="alert"></p>
     <div id="repo-list"></div>
     <div class="login-actions">
-      <button id="repo-create" type="button" data-icon="＋" aria-label="Neues Repository erstellen" title="Neues Repository erstellen">Neues Repository erstellen</button>
-      <button id="repo-retry" type="button" data-icon="↻" aria-label="Repositories erneut laden" title="Repositories erneut laden" hidden>Erneut laden</button>
-      <button id="repo-cancel" type="button" data-icon="×" aria-label="Repository-Auswahl schließen" title="Repository-Auswahl schließen">Schließen</button>
+      <button id="repo-create" type="button" data-icon="add" aria-label="Neues Repository erstellen" title="Neues Repository erstellen">Neues Repository erstellen</button>
+      <button id="repo-retry" type="button" data-icon="refresh" aria-label="Repositories erneut laden" title="Repositories erneut laden" hidden>Erneut laden</button>
+      <button id="repo-cancel" type="button" data-icon="sys-cancel" aria-label="Repository-Auswahl schließen" title="Repository-Auswahl schließen">Schließen</button>
     </div>
   </dialog>
   <dialog id="create-repo-dialog" aria-labelledby="create-repo-title">
@@ -211,8 +279,8 @@
       <p id="create-repo-status" role="status"></p>
       <p id="create-repo-error" role="alert"></p>
       <div class="login-actions">
-        <button id="create-repo-submit" type="submit" data-icon="＋" aria-label="Privates Repository erstellen" title="Privates Repository erstellen">Privates Repository erstellen</button>
-        <button id="create-repo-cancel" type="button" data-icon="×" aria-label="Erstellung abbrechen" title="Erstellung abbrechen">Abbrechen</button>
+        <button id="create-repo-submit" type="submit" data-icon="add" aria-label="Privates Repository erstellen" title="Privates Repository erstellen">Privates Repository erstellen</button>
+        <button id="create-repo-cancel" type="button" data-icon="sys-cancel" aria-label="Erstellung abbrechen" title="Erstellung abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
@@ -222,9 +290,9 @@
     <pre id="sync-conflict-local"></pre>
     <pre id="sync-conflict-remote"></pre>
     <div class="login-actions">
-      <button id="sync-conflict-keep-local" type="button" data-icon="⌂" aria-label="Lokale Version verwenden" title="Lokale Version verwenden">Lokale Version</button>
-      <button id="sync-conflict-use-remote" type="button" data-icon="☁" aria-label="Online-Version verwenden" title="Online-Version verwenden">Online-Version</button>
-      <button id="sync-conflict-merge" type="button" data-icon="⇄" aria-label="Änderungen zusammenführen" title="Änderungen zusammenführen">Merge</button>
+      <button id="sync-conflict-keep-local" type="button" data-icon="home" aria-label="Lokale Version verwenden" title="Lokale Version verwenden">Lokale Version</button>
+      <button id="sync-conflict-use-remote" type="button" data-icon="cloud" aria-label="Online-Version verwenden" title="Online-Version verwenden">Online-Version</button>
+      <button id="sync-conflict-merge" type="button" data-icon="compare" aria-label="Änderungen zusammenführen" title="Änderungen zusammenführen">Merge</button>
     </div>
   </dialog>
   <dialog id="new-tex-file-dialog" aria-labelledby="new-tex-file-title">
@@ -236,8 +304,8 @@
       <input id="new-tex-file-name" name="name" required maxlength="255" autocomplete="off" placeholder="kapitel.tex">
       <p id="new-tex-file-error" role="alert"></p>
       <div class="login-actions">
-        <button id="new-tex-file-submit" type="submit" data-icon="＋" aria-label="TeX-Datei anlegen" title="TeX-Datei anlegen">Anlegen</button>
-        <button id="new-tex-file-cancel" type="button" data-icon="×" aria-label="Datei anlegen abbrechen" title="Datei anlegen abbrechen">Abbrechen</button>
+        <button id="new-tex-file-submit" type="submit" data-icon="add" aria-label="TeX-Datei anlegen" title="TeX-Datei anlegen">Anlegen</button>
+        <button id="new-tex-file-cancel" type="button" data-icon="sys-cancel" aria-label="Datei anlegen abbrechen" title="Datei anlegen abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
@@ -249,15 +317,15 @@
       <input id="commit-message" name="message" required maxlength="200" autocomplete="off">
       <p id="commit-error" role="alert"></p>
       <div class="login-actions">
-        <button id="commit-submit" type="submit" data-icon="↥" aria-label="Änderungen committen und pushen" title="Änderungen committen und pushen">Commit und Push</button>
-        <button id="commit-cancel" type="button" data-icon="×" aria-label="Commit abbrechen" title="Commit abbrechen">Abbrechen</button>
+        <button id="commit-submit" type="submit" data-icon="upload" aria-label="Änderungen committen und pushen" title="Änderungen committen und pushen">Commit und Push</button>
+        <button id="commit-cancel" type="button" data-icon="sys-cancel" aria-label="Commit abbrechen" title="Commit abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>
   <footer>
     <div id="footer-actions">
-      <button id="gh-login-btn" type="button" data-icon="↪" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
-      <button id="toggle-log" type="button" data-icon="☷" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
+      <button id="gh-login-btn" type="button" data-icon="connected" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
+      <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
     </div>
     <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>
   </footer>

@@ -36,7 +36,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   function element(tagName = 'DIV') {
     const classNames = new Set();
     return {
-      handlers: {}, children: [], attributes: {}, value: '', textContent: '', style: { setProperty(key, value) { this[key] = value; } }, disabled: false,
+      handlers: {}, children: [], attributes: {}, value: '', textContent: '', selectionStart: 0, selectionEnd: 0, scrollTop: 0, scrollLeft: 0,
+      style: { setProperty(key, value) { this[key] = value; } }, disabled: false,
       tagName, hidden: true,
       classList: {
         add(name) { classNames.add(name); },
@@ -54,6 +55,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
       replaceChildren(...children) { this.children = children; },
       getContext() { return {}; },
       setAttribute(name, value) { this.attributes[name] = value; },
+      setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
       getAttribute(name) { return this.attributes[name] ?? null; },
       getBoundingClientRect() { return { width: 800, height: 600 }; },
       setPointerCapture() {},
@@ -579,6 +581,107 @@ test('Sidebar lädt auswählbare LaTeX-Dateien von GitHub oder aus dem lokalen O
   assert.equal(app.elements.editor.value, 'Anhang lokal');
   assert.equal(visibleChapter.attributes['aria-current'], undefined);
   assert.equal(nested.attributes['aria-current'], 'page');
+});
+
+test('Dateiwechsel setzt Cursor und Scroll-Position an den Anfang', async () => {
+  const app = setup({
+    localInitial: { gh_current_repo: 'alice/project', gh_current_branch: 'main' },
+    fetchImpl: async (url) => {
+      if (url.endsWith('/user')) return response({});
+      if (url.includes('/user/repos')) return response([{ full_name: 'alice/project', default_branch: 'main' }]);
+      if (url.includes('/branches')) return response([{ name: 'main' }]);
+      if (url.includes('/git/trees/')) return response({ truncated: false, tree: [
+        { type: 'blob', path: 'chapter.tex' }, { type: 'blob', path: 'main.tex' }
+      ] });
+      if (url.includes('/contents/')) return { ok: true, text: async () => 'Dateiinhalt\nzweite Zeile' };
+      throw new Error(`Unerwartete URL: ${url}`);
+    }
+  });
+  await submit(app, 'github_pat_test123');
+  await app.elements['repo-list'].children[0].handlers.click();
+  app.elements.editor.scrollTop = 180;
+  app.elements.editor.scrollLeft = 24;
+  app.elements.editor.setSelectionRange(10, 10);
+  const chapter = app.elements['file-list'].children[0].children[0].children[1].children[0].children[0];
+  await chapter.handlers.click();
+  assert.equal(app.elements.editor.selectionStart, 0);
+  assert.equal(app.elements.editor.selectionEnd, 0);
+  assert.equal(app.elements.editor.scrollTop, 0);
+  assert.equal(app.elements.editor.scrollLeft, 0);
+});
+
+test('Anführungszeichen erzeugen LaTeX-Paare und Auswahl wird eingeschlossen', () => {
+  const app = setup();
+  const editor = app.elements.editor;
+  editor.value = 'Zitat';
+  editor.setSelectionRange(2, 2);
+  let prevented = false;
+  editor.handlers.keydown({ key: '"', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(editor.value, ['Zi', '"`', '"\'', 'tat'].join(''));
+  assert.equal(editor.selectionStart, 4);
+  assert.equal(editor.selectionEnd, 4);
+
+  editor.handlers.keydown({ key: '"', preventDefault() {} });
+  assert.equal(editor.value, ['Zi', '"`', '"\'', 'tat'].join(''));
+  assert.equal(editor.selectionStart, 6);
+
+  editor.value = 'Text';
+  editor.setSelectionRange(0, 4);
+  editor.handlers.keydown({ key: '"', preventDefault() {} });
+  assert.equal(editor.value, ['"`', 'Text', '"\''].join(''));
+  assert.equal(editor.selectionStart, 6);
+  assert.equal(editor.selectionEnd, 6);
+});
+
+test('Monaco setzt den Cursor an Dateianfang und unterstützt LaTeX-Anführungszeichen', async () => {
+  let value = '';
+  let selection = { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 };
+  let position;
+  let scrollTop;
+  let scrollLeft;
+  const model = {
+    getValue: () => value,
+    getOffsetAt: ({ column }) => column - 1,
+    getPositionAt: (offset) => ({ lineNumber: 1, column: offset + 1 })
+  };
+  const monacoEditor = {
+    getValue: () => value,
+    getModel: () => model,
+    getSelection: () => selection,
+    setValue(next) { value = next; },
+    setPosition(next) {
+      position = next;
+      selection = { startLineNumber: 1, startColumn: next.column, endLineNumber: 1, endColumn: next.column };
+    },
+    setScrollTop(next) { scrollTop = next; },
+    setScrollLeft(next) { scrollLeft = next; },
+    executeEdits(_source, edits) {
+      const { range, text } = edits[0];
+      const start = range.startColumn - 1;
+      const end = range.endColumn - 1;
+      value = `${value.slice(0, start)}${text}${value.slice(end)}`;
+    },
+    onDidChangeModelContent() {}
+  };
+  const app = setup({ monaco: {
+    MarkerSeverity: { Error: 8 },
+    editor: {
+      create(_host, options) { value = options.value; return monacoEditor; },
+      setModelMarkers() {}
+    }
+  } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(position.lineNumber, 1);
+  assert.equal(position.column, 1);
+  assert.equal(scrollTop, 0);
+  assert.equal(scrollLeft, 0);
+  value = 'Text';
+  selection = { startLineNumber: 1, startColumn: 2, endLineNumber: 1, endColumn: 2 };
+  app.elements['monaco-editor'].handlers.keydown({ key: '"', preventDefault() {} });
+  assert.equal(value, ['T', '"`', '"\'', 'ext'].join(''));
+  assert.equal(position.lineNumber, 1);
+  assert.equal(position.column, 4);
 });
 
 test('Repository-Öffnen lädt alle regulären Dateien und meldet Git-LFS sowie Submodule', async () => {
@@ -1233,7 +1336,8 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
     assert.match(attributes, /data-icon=/);
     assert.match(attributes, /aria-label=/);
   }
-  assert.match(html, /button\[data-icon\]::before \{ content: attr\(data-icon\)/);
+  assert.match(html, /@font-face \{ font-family: "SAP-icons"/);
+  assert.match(html, /button\[data-icon="save"\]::before \{ content: "\\e09a"/);
 });
 
 test('Speichern bündelt geänderte Dateien und versionierte Projekteinstellungen in genau einem atomaren Commit', async () => {

@@ -374,13 +374,68 @@
   function getEditorValue() {
     return monacoEditor ? monacoEditor.getValue() : textarea.value;
   }
+  function resetEditorPosition() {
+    if (monacoEditor) {
+      monacoEditor.setPosition?.({ lineNumber: 1, column: 1 });
+      monacoEditor.setScrollTop?.(0);
+      monacoEditor.setScrollLeft?.(0);
+    }
+    textarea.setSelectionRange?.(0, 0);
+    textarea.scrollTop = 0;
+    textarea.scrollLeft = 0;
+  }
   function setEditorValue(value) {
     suppressEditorChanges = true;
-    if (monacoEditor) monacoEditor.setValue(value);
-    textarea.value = value;
-    suppressEditorChanges = false;
+    try {
+      if (monacoEditor) monacoEditor.setValue(value);
+      textarea.value = value;
+      resetEditorPosition();
+    } finally {
+      suppressEditorChanges = false;
+    }
     scheduleLint();
     applyCompileMarkers();
+  }
+
+  function handleEditorInput() {
+    activeFileLoaded = true;
+    scheduleAutoSave();
+    scheduleLint();
+  }
+
+  function insertLatexQuotes(event, useMonaco) {
+    if (event.key !== '"') return;
+    event.preventDefault();
+    const openingQuote = '"`';
+    const closingQuote = '"\'';
+    if (useMonaco && monacoEditor) {
+      const model = monacoEditor.getModel();
+      const selection = monacoEditor.getSelection();
+      const start = model.getOffsetAt({ lineNumber: selection.startLineNumber, column: selection.startColumn });
+      const end = model.getOffsetAt({ lineNumber: selection.endLineNumber, column: selection.endColumn });
+      const value = model.getValue();
+      if (start === end && value.slice(start, start + closingQuote.length) === closingQuote) {
+        monacoEditor.setPosition(model.getPositionAt(start + closingQuote.length));
+        return;
+      }
+      const selectedText = value.slice(start, end);
+      const insertedText = `${openingQuote}${selectedText}${closingQuote}`;
+      monacoEditor.executeEdits('latex-quote-assist', [{ range: selection, text: insertedText }]);
+      monacoEditor.setPosition(model.getPositionAt(start + openingQuote.length + selectedText.length));
+      return;
+    }
+
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? start;
+    if (start === end && textarea.value.slice(start, start + closingQuote.length) === closingQuote) {
+      textarea.setSelectionRange(start + closingQuote.length, start + closingQuote.length);
+      return;
+    }
+    const selectedText = textarea.value.slice(start, end);
+    textarea.value = `${textarea.value.slice(0, start)}${openingQuote}${selectedText}${closingQuote}${textarea.value.slice(end)}`;
+    const cursor = start + openingQuote.length + selectedText.length;
+    textarea.setSelectionRange(cursor, cursor);
+    handleEditorInput();
   }
 
   function clearLintMarkers() {
@@ -1097,10 +1152,10 @@
   }, PERIODIC_SAVE_MS);
 
   textarea.addEventListener('input', () => {
-    activeFileLoaded = true;
-    scheduleAutoSave();
-    scheduleLint();
+    handleEditorInput();
   });
+  textarea.addEventListener('keydown', (event) => insertLatexQuotes(event, false));
+  monacoHost.addEventListener('keydown', (event) => insertLatexQuotes(event, true));
   sidebarToggle.addEventListener('click', () => {
     if (sidebarToggle.disabled) return;
     sidebar.classList.toggle('collapsed');
@@ -1347,7 +1402,7 @@
       monacoEditor = window.monaco.editor.create(monacoHost, {
         value: textarea.value || DEFAULT_DOCUMENT,
         language: 'latex',
-        theme: 'vs-dark',
+        theme: 'vs',
         automaticLayout: true,
         minimap: { enabled: false },
         fontSize: 14,
@@ -1355,13 +1410,12 @@
       });
       monacoEditor.onDidChangeModelContent(() => {
         if (!suppressEditorChanges) {
-          activeFileLoaded = true;
-          scheduleAutoSave();
-          scheduleLint();
+          handleEditorInput();
         }
       });
       textarea.style.display = 'none';
       monacoHost.style.display = 'block';
+      resetEditorPosition();
       scheduleLint();
       return true;
     } catch (error) {
@@ -1718,7 +1772,8 @@
     const projectButton = document.createElement('button');
     projectButton.type = 'button';
     projectButton.className = 'folder-toggle';
-    projectButton.textContent = `📁 ${repoName || 'Lokales Projekt'}`;
+    projectButton.setAttribute('data-icon', 'folder-blank');
+    projectButton.textContent = repoName || 'Lokales Projekt';
     const projectChildren = document.createElement('ul');
     projectChildren.hidden = collapsedFolders.has('');
     projectButton.setAttribute('aria-expanded', String(!projectChildren.hidden));
@@ -1765,7 +1820,8 @@
         const label = document.createElement('button');
         label.type = 'button';
         label.className = 'folder-toggle';
-        label.textContent = `📁 ${name}`;
+        label.setAttribute('data-icon', 'folder-blank');
+        label.textContent = name;
         const children = document.createElement('ul');
         children.hidden = collapsedFolders.has(item.path);
         label.setAttribute('aria-expanded', String(!children.hidden));
@@ -1808,6 +1864,7 @@
         } else {
           label.className = 'file-readonly';
           label.setAttribute('role', 'img');
+          if (item.type !== 'commit' && item.mode !== '160000') label.setAttribute('data-icon', 'locked');
           const reason = item.type === 'commit' || item.mode === '160000'
             ? 'Git-Submodule nicht unterstützt'
             : item.mode === '120000'
@@ -1815,7 +1872,7 @@
               : 'Nicht bearbeitbare Datei';
           label.setAttribute('aria-label', `${reason}: ${name}`);
         }
-        label.textContent = editable ? name : `🔒 ${name}`;
+        label.textContent = name;
         row.appendChild(label);
       }
       parent.appendChild(row);

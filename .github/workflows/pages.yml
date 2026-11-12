@@ -47,9 +47,9 @@ jobs:
       - name: Prepare site and stamp service worker and build info with this commit SHA
         run: |
           mkdir -p _site
-          cp -R index.html manifest.json sw.js js _site/
+          cp -R index.html manifest.json sw.js js fonts _site/
           sed -i "s/__COMMIT_SHA__/${GITHUB_SHA}/g" _site/sw.js _site/js/build-info.js
-          for asset in js/engine/tectonic_wasm.wasm js/engine/tectonic-bundle.tar.gz js/engine/packs/pack-koma-script-3.43-2024.10.24.tar.gz js/engine/packs/pack-babel-nil-2024-10-24.tar.gz js/engine/packs/pack-babel-ngerman-2024-10-24.tar.gz js/engine/packs/packs-index.json js/engine/packs/packs-integrity.json js/pdfjs/pdf.min.mjs js/pdfjs/pdf.worker.min.mjs js/tex-worker.js js/lint-worker.js js/THIRD-PARTY-NOTICES.md; do
+          for asset in fonts/SAP-icons.woff2 fonts/LICENSE-APACHE-2.0.txt js/engine/tectonic_wasm.wasm js/engine/tectonic-bundle.tar.gz js/engine/packs/pack-koma-script-3.43-2024.10.24.tar.gz js/engine/packs/pack-babel-nil-2024-10-24.tar.gz js/engine/packs/pack-babel-ngerman-2024-10-24.tar.gz js/engine/packs/packs-index.json js/engine/packs/packs-integrity.json js/pdfjs/pdf.min.mjs js/pdfjs/pdf.worker.min.mjs js/tex-worker.js js/lint-worker.js js/THIRD-PARTY-NOTICES.md; do
             if [ ! -s "_site/${asset}" ]; then
               echo "Missing deployed asset: ${asset}" >&2
               exit 1
