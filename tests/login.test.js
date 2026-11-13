@@ -1576,7 +1576,7 @@ test('Speichern und Dateimarkierung folgen dem tatsächlichen Editorstand', asyn
   assert.equal(app.elements['save-btn'].disabled, false);
   assert.equal(file.getAttribute('data-change'), 'modified');
   assert.equal(file.textContent, '* main.tex');
-  assert.equal(file.getAttribute('data-icon'), 'source-code');
+  assert.equal(file.getAttribute('data-icon'), 'document-text');
   assert.match(file.getAttribute('aria-label'), /geändert/);
   app.elements.editor.value = 'Remote-Hauptdatei';
   app.elements.editor.handlers.input();
@@ -1598,7 +1598,7 @@ test('Geänderte TeX-Dateien und übergeordnete Ordner erhalten einen Stern hint
   const projectRow = () => app.elements['file-list'].children[0].children[0];
   const folder = projectRow().children[1].children.find((row) => rowName(row) === 'Kapitel');
   const file = folder.children[1].children.find((row) => rowName(row) === 'kapitel.tex').children[0];
-  assert.equal(file.getAttribute('data-icon'), 'source-code');
+  assert.equal(file.getAttribute('data-icon'), 'document-text');
   await file.handlers.click();
   app.elements.editor.value = 'Geändertes Kapitel';
   app.elements.editor.handlers.input();
@@ -2162,6 +2162,7 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   }
   assert.match(html, /@font-face \{ font-family: "SAP-icons"/);
   assert.match(html, /button\[data-icon="save"\]::before \{ content: "\\e09a"/);
+  assert.match(html, /button\[data-icon="document-text"\]::before \{ content: "\\e1b4"/);
   assert.match(html, /button\[data-icon="github"\]::before/);
   assert.match(html, /id="file-context-delete"[^>]*data-icon="delete"/);
   assert.match(html, /#file-context-menu button\[data-icon\]::before/);

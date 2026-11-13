@@ -2213,7 +2213,7 @@
         if (editable) {
           label.type = 'button';
           label.className = 'file-select-button';
-          label.setAttribute('data-icon', 'source-code');
+          label.setAttribute('data-icon', 'document-text');
           label.setAttribute('aria-label', `LaTeX-Datei bearbeiten: ${name}`);
           changeMarkerTargets.push({ element: label, path: item.path, label: `LaTeX-Datei bearbeiten: ${name}`, text: name });
           label.addEventListener('click', async (event) => {
