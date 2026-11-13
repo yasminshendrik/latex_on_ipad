@@ -67,10 +67,10 @@
   const projectSettingsClose = document.getElementById('project-settings-close');
   const branchSelect = document.getElementById('branch-select');
   const branchSelector = document.getElementById('branch-selector');
-  const addTexFileButton = document.getElementById('add-tex-file');
   const newTexFileDialog = document.getElementById('new-tex-file-dialog');
   const newTexFileForm = document.getElementById('new-tex-file-form');
   const newTexFileFolder = document.getElementById('new-tex-file-folder');
+  const newTexFileKind = document.getElementById('new-tex-file-kind');
   const newTexFileName = document.getElementById('new-tex-file-name');
   const newTexFileError = document.getElementById('new-tex-file-error');
   const commitDialog = document.getElementById('commit-dialog');
@@ -1937,7 +1937,7 @@
     const root = document.createElement('ul');
     root.className = 'file-tree';
     const project = document.createElement('li');
-    project.className = 'file-item';
+    project.className = 'file-item folder-item';
     const projectButton = document.createElement('button');
     projectButton.type = 'button';
     projectButton.className = 'folder-toggle';
@@ -1955,18 +1955,20 @@
     });
     project.appendChild(projectButton);
     project.appendChild(projectChildren);
+    project.appendChild(createFolderAddButton(''));
     root.appendChild(project);
     const directories = new Map([['', projectChildren]]);
     activeFileButtons = [];
     const visibleItems = items.filter((item) => {
       const parts = item.path.split('/');
       return !parts.includes('.git') && item.path !== '.latex-ipad' && !item.path.startsWith('.latex-ipad/') &&
-        (item.type === 'tree' || !['.gitignore', '.gitattributes', '.gitmodules'].includes(parts[parts.length - 1]));
+        (item.type === 'tree' || !['.gitignore', '.gitattributes', '.gitmodules', '.gitkeep'].includes(parts[parts.length - 1]));
     });
     const visibleFiles = visibleItems.filter((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
     const visibleFilePaths = new Set(visibleFiles.map((item) => item.path));
     const visibleDirectories = new Set();
-    for (const item of visibleFiles) {
+    const folderMarkers = items.filter((item) => item.type === 'blob' && item.path.endsWith('/.gitkeep'));
+    for (const item of [...visibleFiles, ...folderMarkers]) {
       const parts = item.path.split('/');
       parts.pop();
       while (parts.length) {
@@ -1986,6 +1988,7 @@
       const row = document.createElement('li');
       row.className = 'file-item';
       if (item.type === 'tree') {
+        row.className = 'file-item folder-item';
         const label = document.createElement('button');
         label.type = 'button';
         label.className = 'folder-toggle';
@@ -2003,6 +2006,7 @@
         });
         row.appendChild(label);
         row.appendChild(children);
+        row.appendChild(createFolderAddButton(item.path));
         directories.set(item.path, children);
       } else {
         const extension = name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
@@ -2055,6 +2059,18 @@
     return root;
   }
 
+  function createFolderAddButton(folder) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'folder-add';
+    button.setAttribute('data-icon', 'add');
+    const label = `Datei oder Ordner anlegen in ${folder || 'Projektwurzel'}`;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.addEventListener('click', () => openNewTexFileDialog(folder));
+    return button;
+  }
+
   function renderSidebar() {
     const tree = renderFileTree(sidebarItems);
     fileList.replaceChildren(tree);
@@ -2099,7 +2115,6 @@
     saveButton.hidden = false;
     previewButton.hidden = false;
     sidebarToggle.disabled = false;
-    addTexFileButton.disabled = false;
     saveViewState();
   }
 
@@ -2154,72 +2169,89 @@
     }
   }
 
-  function openNewTexFileDialog() {
-    const folders = [...new Set(sidebarItems.filter((item) => item.type === 'tree' &&
-      item.path !== '.latex-ipad' && !item.path.startsWith('.latex-ipad/')).map((item) => item.path))].sort();
-    const options = [document.createElement('option')];
-    options[0].value = '';
-    options[0].textContent = 'Projektordner-Wurzel';
-    for (const folder of folders) {
-      const option = document.createElement('option');
-      option.value = folder;
-      option.textContent = folder;
-      options.push(option);
-    }
-    newTexFileFolder.replaceChildren(...options);
+  let newItemContext;
+  function openNewTexFileDialog(folder) {
+    const option = document.createElement('option');
+    option.value = folder;
+    option.textContent = folder || 'Projektordner-Wurzel';
+    newTexFileFolder.replaceChildren(option);
+    newTexFileFolder.value = folder;
+    newTexFileKind.value = 'file';
+    newItemContext = projectContext();
     newTexFileName.value = '';
     newTexFileError.textContent = '';
     if (!newTexFileDialog.open) newTexFileDialog.showModal();
   }
 
-  addTexFileButton.addEventListener('click', openNewTexFileDialog);
   const newTexFileSubmit = document.getElementById('new-tex-file-submit');
   const newTexFileCancel = document.getElementById('new-tex-file-cancel');
   newTexFileCancel.addEventListener('click', () => {
     if (!newTexFileRequest) {
-      logActivity('Anlegen einer TeX-Datei abgebrochen.');
+      logActivity('Anlegen einer Datei oder eines Ordners abgebrochen.');
       newTexFileDialog.close();
     }
   });
   newTexFileDialog.addEventListener('cancel', (event) => {
     if (newTexFileRequest) event.preventDefault();
-    else logActivity('Anlegen einer TeX-Datei abgebrochen.');
+    else logActivity('Anlegen einer Datei oder eines Ordners abgebrochen.');
   });
   newTexFileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (newTexFileRequest) return;
     const fileName = newTexFileName.value.trim();
     const folder = newTexFileFolder.value;
+    const isFolder = newTexFileKind.value === 'folder';
     const stem = fileName.slice(0, fileName.lastIndexOf('.'));
-    if (!fileName || fileName.length > 255 || !stem || !TEX_FILE.test(fileName) ||
-      /[\/\\\u0000-\u001f\u007f]/.test(fileName)) {
-      newTexFileError.textContent = 'Bitte einen gültigen Dateinamen mit .tex, .latex oder .ltx eingeben.';
+    if (!newItemContext || !isCurrentContext(newItemContext)) {
+      newTexFileError.textContent = 'Das Projekt hat sich geändert. Bitte den Dialog erneut öffnen.';
+      logActivity('Anlegen abgebrochen: Projektkontext geändert.');
+      return;
+    }
+    if (!fileName || fileName.length > 255 || /[\/\\\u0000-\u001f\u007f]/.test(fileName) ||
+      ['.', '..', '.git', '.latex-ipad', '.gitkeep'].includes(fileName) ||
+      (!isFolder && (!stem || !TEX_FILE.test(fileName)))) {
+      newTexFileError.textContent = isFolder ? 'Bitte einen gültigen einzelnen Ordnernamen eingeben.' : 'Bitte einen gültigen Dateinamen mit .tex, .latex oder .ltx eingeben.';
+      logActivity('Anlegen fehlgeschlagen: ungültiger Name.');
       return;
     }
     if (folder && !sidebarItems.some((item) => item.type === 'tree' && item.path === folder)) {
       newTexFileError.textContent = 'Der ausgewählte Projektordner ist nicht mehr verfügbar.';
+      logActivity('Anlegen fehlgeschlagen: Zielordner nicht verfügbar.');
       return;
     }
     const path = folder ? `${folder}/${fileName}` : fileName;
     if (!isSafeProjectPath(path) || sidebarItems.some((item) => item.path === path)) {
       newTexFileError.textContent = 'Unter diesem Pfad existiert bereits eine Datei oder der Pfad ist ungültig.';
+      logActivity('Anlegen fehlgeschlagen: Pfad ungültig oder vorhanden.');
       return;
     }
     const context = projectContext();
     newTexFileRequest = true;
     newTexFileSubmit.disabled = true;
     newTexFileCancel.disabled = true;
+    const previousReadOnly = textarea.readOnly;
+    if (!isFolder) {
+      textarea.readOnly = true;
+      if (monacoEditor) monacoEditor.updateOptions({ readOnly: true });
+    }
     try {
-      const existing = await readStoredFile(context.repo, context.branch, path);
+      if (!isFolder && activeFileLoaded) {
+        clearTimeout(saveTimer);
+        await persistCurrentFile();
+      }
+      if (!isCurrentContext(context)) throw new Error('Das Projekt hat sich während des Anlegens geändert.');
+      const storedPath = isFolder ? `${path}/.gitkeep` : path;
+      const existing = await readStoredFile(context.repo, context.branch, storedPath);
       if (existing) {
         newTexFileError.textContent = 'Unter diesem Pfad existiert bereits eine lokal gespeicherte Datei.';
+        logActivity('Anlegen fehlgeschlagen: lokale Datei vorhanden.');
         return;
       }
       const record = {
-        id: fileId(context.repo, context.branch, path),
+        id: fileId(context.repo, context.branch, storedPath),
         repo: context.repo,
         branch: context.branch,
-        path,
+        path: storedPath,
         content: '',
         baseContent: '',
         isNewFile: true,
@@ -2232,25 +2264,34 @@
         id: context.repo,
         repo: context.repo,
         branch: context.branch,
-        activePath: path,
-        paths: [...new Set([...(project?.branch === context.branch ? project.paths || [] : []), path])],
+        activePath: isFolder ? activePath : path,
+        paths: [...new Set([...(project?.branch === context.branch ? project.paths || [] : []), storedPath])],
         updatedAt: record.updatedAt
       });
       if (!isCurrentContext(context)) return;
-      sidebarItems = [...sidebarItems, { type: 'blob', path, mode: '100644', size: 0 }];
-      activePath = path;
-      activeFileLoaded = true;
-      setEditorValue('');
+      if (isFolder) {
+        sidebarItems = [...sidebarItems, { type: 'tree', path }, { type: 'blob', path: storedPath, mode: '100644', size: 0 }];
+      } else {
+        sidebarItems = [...sidebarItems, { type: 'blob', path, mode: '100644', size: 0 }];
+        activePath = path;
+        activeFileLoaded = true;
+        setEditorValue('');
+      }
+      collapsedFolders.delete(folder);
       saveViewState();
       renderSidebar();
       await refreshMainFiles();
       newTexFileDialog.close();
-      logActivity('Neue TeX-Datei lokal angelegt.');
-      setStatus(`Neue TeX-Datei lokal angelegt: ${path}`);
+      logActivity(isFolder ? 'Neuer Ordner lokal angelegt.' : 'Neue TeX-Datei lokal angelegt.');
+      setStatus(`${isFolder ? 'Neuer Ordner' : 'Neue TeX-Datei'} lokal angelegt: ${path}`);
     } catch (error) {
-      logActivity('Neue TeX-Datei konnte nicht lokal angelegt werden.');
-      newTexFileError.textContent = `Datei konnte nicht angelegt werden: ${error.message}`;
+      logActivity('Datei oder Ordner konnte nicht lokal angelegt werden.');
+      newTexFileError.textContent = `Eintrag konnte nicht angelegt werden: ${error.message}`;
     } finally {
+      if (!isFolder) {
+        textarea.readOnly = previousReadOnly;
+        if (monacoEditor) monacoEditor.updateOptions({ readOnly: previousReadOnly });
+      }
       newTexFileRequest = false;
       newTexFileSubmit.disabled = false;
       newTexFileCancel.disabled = false;
@@ -2347,7 +2388,8 @@
     const paths = [...new Set([...(project.paths || []), ...localRecords.map((record) => record.path)])].sort();
     repoName = nextRepo;
     branchName = nextBranch;
-    activePath = project.activePath && paths.includes(project.activePath) ? project.activePath : paths.includes('main.tex') ? 'main.tex' : paths[0] || 'main.tex';
+    activePath = project.activePath && TEX_FILE.test(project.activePath) && paths.includes(project.activePath)
+      ? project.activePath : paths.includes('main.tex') ? 'main.tex' : paths.find((path) => TEX_FILE.test(path)) || 'main.tex';
     sidebarItems = localTreeItems(paths);
     collapsedFolders.clear();
     renderSidebar();
@@ -2390,10 +2432,11 @@
       await persistCurrentFile();
     }
     if (signal?.aborted) { logActivity('Dateiauswahl abgebrochen.'); return; }
+    const repo = repoName || 'local';
     let saved;
-    try { saved = await readStoredFile(repoName, branchName, path); }
+    try { saved = await readStoredFile(repo, branchName, path); }
     catch (error) { throw new Error(`Lokaler Inhalt konnte nicht geladen werden: ${error.message}`); }
-    const fallback = localStorage.getItem(`latex_ipad_document:${repoName}:${branchName}:${path}`);
+    const fallback = localStorage.getItem(`latex_ipad_document:${repo}:${branchName}:${path}`);
     if (signal?.aborted) { logActivity('Dateiauswahl abgebrochen.'); return; }
     let content = saved?.content ?? fallback;
     if (content === null || content === undefined) {
@@ -2416,8 +2459,8 @@
     updateActiveFileButton();
     await storeFile({
       ...(saved || {}),
-      id: fileId(repoName, branchName, path),
-      repo: repoName,
+      id: fileId(repo, branchName, path),
+      repo,
       branch: branchName,
       path,
       content,

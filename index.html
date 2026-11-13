@@ -70,7 +70,9 @@
     .sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
     .sidebar-heading button { flex: 0 0 auto; }
     #file-list { overflow: auto; flex: 1; }
-    .file-item { padding: 4px 8px; overflow-wrap: anywhere; }
+    .file-item { position: relative; padding: 4px 8px; overflow-wrap: anywhere; }
+    .file-item.folder-item { padding-right: 50px; }
+    .folder-add { position: absolute; top: 4px; right: 4px; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
     .file-select-button[aria-current="page"] { color: #fff; background: #094771; }
     .folder-toggle { width: 100%; padding: 4px; background: transparent; text-align: left; }
@@ -226,7 +228,7 @@
   </section>
   <main id="main-container" hidden>
     <aside id="sidebar">
-      <div class="sidebar-heading"><span>PROJEKTDATEIEN</span><button id="add-tex-file" type="button" disabled data-icon="add" aria-label="Neue TeX-Datei anlegen" title="Neue TeX-Datei anlegen">Neue TeX-Datei</button></div>
+      <div class="sidebar-heading"><span>PROJEKTDATEIEN</span></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
@@ -323,16 +325,21 @@
     </div>
   </dialog>
   <dialog id="new-tex-file-dialog" aria-labelledby="new-tex-file-title">
-    <h2 id="new-tex-file-title">Neue TeX-Datei</h2>
+    <h2 id="new-tex-file-title">Datei oder Ordner anlegen</h2>
     <form id="new-tex-file-form">
       <label for="new-tex-file-folder">Projektordner</label>
-      <select id="new-tex-file-folder"></select>
-      <label for="new-tex-file-name">Dateiname</label>
+      <select id="new-tex-file-folder" disabled></select>
+      <label for="new-tex-file-kind">Art</label>
+      <select id="new-tex-file-kind">
+        <option value="file">Datei</option>
+        <option value="folder">Ordner</option>
+      </select>
+      <label for="new-tex-file-name">Name</label>
       <input id="new-tex-file-name" name="name" required maxlength="255" autocomplete="off" placeholder="kapitel.tex">
       <p id="new-tex-file-error" role="alert"></p>
       <div class="login-actions">
-        <button id="new-tex-file-submit" type="submit" data-icon="add" aria-label="TeX-Datei anlegen" title="TeX-Datei anlegen">Anlegen</button>
-        <button id="new-tex-file-cancel" type="button" data-icon="sys-cancel" aria-label="Datei anlegen abbrechen" title="Datei anlegen abbrechen">Abbrechen</button>
+        <button id="new-tex-file-submit" type="submit" data-icon="add" aria-label="Anlegen" title="Anlegen">Anlegen</button>
+        <button id="new-tex-file-cancel" type="button" data-icon="sys-cancel" aria-label="Anlegen abbrechen" title="Anlegen abbrechen">Abbrechen</button>
       </div>
     </form>
   </dialog>

@@ -13,7 +13,7 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'dashboa
   'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'branch-selector', 'project-settings-button', 'project-settings-dialog', 'project-settings-close',
   'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
-  'add-tex-file', 'new-tex-file-dialog', 'new-tex-file-form', 'new-tex-file-folder', 'new-tex-file-name', 'new-tex-file-error',
+  'new-tex-file-dialog', 'new-tex-file-form', 'new-tex-file-folder', 'new-tex-file-kind', 'new-tex-file-name', 'new-tex-file-error',
   'new-tex-file-submit', 'new-tex-file-cancel', 'commit-dialog', 'commit-form', 'commit-message', 'commit-error', 'commit-submit', 'commit-cancel',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
   'create-repo-status', 'create-repo-error', 'create-repo-submit', 'create-repo-cancel',
@@ -1421,10 +1421,12 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   assert.equal(app.elements['save-btn'].hidden, false);
   assert.equal(app.elements['toggle-preview'].hidden, false);
   assert.equal(app.elements['branch-selector'].hidden, true);
-  assert.equal(app.elements['add-tex-file'].disabled, false);
-  app.elements['add-tex-file'].handlers.click();
+  const projectRoot = app.elements['file-list'].children[0].children[0];
+  const chapters = projectRoot.children[1].children.find((row) => row.children[0].textContent === 'chapters');
+  chapters.children[2].handlers.click();
   assert.equal(app.elements['new-tex-file-dialog'].open, true);
-  app.elements['new-tex-file-folder'].value = 'chapters';
+  assert.equal(app.elements['new-tex-file-folder'].value, 'chapters');
+  assert.equal(app.elements['new-tex-file-kind'].value, 'file');
   app.elements['new-tex-file-name'].value = 'draft.pdf';
   await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
   assert.match(app.elements['new-tex-file-error'].textContent, /\.tex/);
@@ -1460,6 +1462,89 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   };
   collectText(app.elements['file-list']);
   assert.ok(rendered.includes('draft.tex'));
+});
+
+test('Ordner lassen sich über ihr Plus verschachtelt und dauerhaft offline anlegen', async () => {
+  const project = { id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex', paths: ['main.tex'] };
+  const app = setup({ localInitial: {
+    latex_ipad_projects: JSON.stringify([project]),
+    'latex_ipad_document:local:main:main.tex': 'Original'
+  } });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  const projectRow = () => app.elements['file-list'].children[0].children[0];
+  const folder = (parent, name) => parent.children[1].children.find((row) => row.children[0].textContent === name);
+  projectRow().children[2].handlers.click();
+  assert.equal(app.elements['new-tex-file-kind'].value, 'file');
+  app.elements['new-tex-file-kind'].value = 'folder';
+  app.elements['new-tex-file-name'].value = 'a/b';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['new-tex-file-error'].textContent, /gültigen/);
+  app.elements['new-tex-file-name'].value = 'Kapitel';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:Kapitel/.gitkeep'), '');
+  assert.ok(folder(projectRow(), 'Kapitel'));
+  folder(projectRow(), 'Kapitel').children[2].handlers.click();
+  assert.equal(app.elements['new-tex-file-folder'].value, 'Kapitel');
+  app.elements['new-tex-file-kind'].value = 'folder';
+  app.elements['new-tex-file-name'].value = 'Unterordner';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.ok(folder(folder(projectRow(), 'Kapitel'), 'Unterordner'));
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:Kapitel/Unterordner/.gitkeep'), '');
+  projectRow().children[2].handlers.click();
+  app.elements['new-tex-file-kind'].value = 'folder';
+  app.elements['new-tex-file-name'].value = 'Kapitel';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['new-tex-file-error'].textContent, /existiert bereits/);
+  app.elements['new-tex-file-cancel'].handlers.click();
+  assert.ok(app.logs.some((entry) => /abgebrochen/.test(entry)));
+  await app.elements['open-dashboard'].handlers.click();
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.ok(folder(folder(projectRow(), 'Kapitel'), 'Unterordner'));
+  const texts = [];
+  const collect = (node) => { if (node.textContent) texts.push(node.textContent); (node.children || []).forEach(collect); };
+  collect(projectRow());
+  assert.ok(!texts.includes('.gitkeep'));
+});
+
+test('Vor dem Anlegen einer Datei wird die bisherige Editoränderung gespeichert', async () => {
+  const project = { id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex', paths: ['main.tex'] };
+  const app = setup({ localInitial: {
+    latex_ipad_projects: JSON.stringify([project]),
+    'latex_ipad_document:local:main:main.tex': 'Alt'
+  } });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  app.elements.editor.value = 'Ungesicherte Änderung';
+  app.elements.editor.handlers.input();
+  app.elements['file-list'].children[0].children[0].children[2].handlers.click();
+  app.elements['new-tex-file-name'].value = 'neu.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:main.tex'), 'Ungesicherte Änderung');
+  assert.equal(app.localValues.get('latex_ipad_document:local:main:neu.tex'), '');
+  const root = app.elements['file-list'].children[0].children[0].children[1];
+  await root.children.find((row) => row.children[0].textContent === 'main.tex').children[0].handlers.click();
+  assert.equal(app.elements.editor.value, 'Ungesicherte Änderung');
+  await root.children.find((row) => row.children[0].textContent === 'neu.tex').children[0].handlers.click();
+  assert.equal(app.elements.editor.value, '');
+});
+
+test('Ein neu angelegter leerer Ordner wird beim GitHub-Commit mit .gitkeep übertragen', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  app.elements['file-list'].children[0].children[0].children[2].handlers.click();
+  app.elements['new-tex-file-kind'].value = 'folder';
+  app.elements['new-tex-file-name'].value = 'Leer';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Ordner anlegen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  const request = app.requests.find((item) => item.url.endsWith('/git/trees') && item.options.method === 'POST');
+  assert.ok(request, app.elements['commit-error'].textContent);
+  assert.ok(JSON.parse(request.options.body).tree.some((item) => item.path === 'Leer/.gitkeep'));
+  const metadata = JSON.parse(app.localValues.get('latex_ipad_file_metadata:alice/project:main:Leer/.gitkeep'));
+  assert.equal(metadata.isNewFile, false);
 });
 
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
