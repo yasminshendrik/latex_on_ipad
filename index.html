@@ -72,13 +72,14 @@
     .sidebar-heading button { flex: 0 0 auto; }
     #file-list { overflow: auto; flex: 1; padding-right: 16px; }
     .file-item { position: relative; padding: 4px 8px; overflow-wrap: anywhere; }
-    .folder-item > .folder-toggle[data-icon] { width: max(0px, 100% - 96px); }
-    .project-item > .folder-toggle[data-icon] { width: max(0px, 100% - 50px); }
-    .file-item.deletable > .file-select-button { width: max(0px, 100% - 46px); }
-    .file-item.deletable > .file-readonly { display: inline-block; max-width: calc(100% - 46px); }
-    .folder-add { position: absolute; top: 4px; right: 4px; }
-    .folder-delete { position: absolute; top: 4px; right: 48px; }
-    .file-delete { position: absolute; top: 4px; right: 4px; }
+    .folder-item > .folder-toggle[data-icon] { width: max(0px, 100% - 50px); }
+    button.folder-add[data-icon] { position: absolute; top: 4px; right: 4px; width: 36px; min-width: 36px; background: transparent; }
+    button.folder-add[data-icon]::before { color: #0a6ed1; font-size: 15px; }
+    .file-item > .folder-toggle, .file-item > .file-select-button, .file-item > .file-readonly { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+    #file-context-menu { position: fixed; z-index: 20; padding: 4px; border: 1px solid var(--fiori-border); border-radius: 5px; background: var(--fiori-surface); box-shadow: 0 3px 12px #0003; }
+    #file-context-menu[hidden] { display: none; }
+    #file-context-menu button { min-width: 150px; background: transparent; color: var(--fiori-text); text-align: left; }
+    #file-context-menu button:focus, #file-context-menu button:hover { background: var(--fiori-selected); }
     #trash { border-top: 1px solid var(--fiori-border); padding: 8px 20px 8px 8px; max-height: 30%; overflow: auto; }
     #trash h3 { margin: 0 0 4px; font-size: 13px; }
     .trash-entry { display: flex; align-items: center; gap: 8px; }
@@ -91,6 +92,7 @@
     .sidebar-filter { display: block; padding: 8px 12px; }
     .file-readonly { padding: 4px; color: #aaa; }
     .file-tree, .file-tree ul { margin: 0; padding-left: 20px; list-style: none; }
+    .file-tree ul { margin-right: -8px; }
     .file-tree { padding-left: 0; }
     #project-properties-content { padding: 0 12px 12px; font-size: 12px; }
     #project-properties-content label { display: block; margin-top: 10px; color: #bbb; }
@@ -246,6 +248,9 @@
       <section id="trash" aria-labelledby="trash-title"><h3 id="trash-title">Papierkorb</h3><div id="trash-list"></div></section>
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
+    <div id="file-context-menu" role="menu" aria-label="Datei- und Ordneraktionen" hidden>
+      <button id="file-context-delete" type="button" role="menuitem">Löschen</button>
+    </div>
     <section id="editor-container">
       <div id="editor-surface">
         <textarea id="editor" aria-label="LaTeX-Editor" spellcheck="false"></textarea>

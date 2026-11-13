@@ -84,6 +84,8 @@
   const commitSubmit = document.getElementById('commit-submit');
   const fileList = document.getElementById('file-list');
   const trashList = document.getElementById('trash-list');
+  const fileContextMenu = document.getElementById('file-context-menu');
+  const fileContextDelete = document.getElementById('file-context-delete');
   const projectName = document.getElementById('project-name');
   const projectBranch = document.getElementById('project-branch');
   const projectRepoLink = document.getElementById('project-repo-link');
@@ -2188,7 +2190,9 @@
         const children = document.createElement('ul');
         children.hidden = collapsedFolders.has(item.path);
         label.setAttribute('aria-expanded', String(!children.hidden));
-        label.addEventListener('click', () => {
+        const consumeLongPressClick = addItemContextMenu(label, item);
+        label.addEventListener('click', (event) => {
+          if (consumeLongPressClick(event)) return;
           children.hidden = !children.hidden;
           if (children.hidden) collapsedFolders.add(item.path);
           else collapsedFolders.delete(item.path);
@@ -2198,19 +2202,20 @@
         row.appendChild(label);
         row.appendChild(children);
         row.appendChild(createFolderAddButton(item.path));
-        row.appendChild(createDeleteButton(item));
         directories.set(item.path, children);
       } else {
         const extension = name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
         const supportedFile = item.type === 'blob' && item.mode !== '120000';
         const editable = supportedFile && (extension === 'tex' || extension === 'latex' || extension === 'ltx');
         const label = document.createElement(editable ? 'button' : 'span');
+        const consumeLongPressClick = addItemContextMenu(label, item);
         if (editable) {
           label.type = 'button';
           label.className = 'file-select-button';
           label.setAttribute('aria-label', `LaTeX-Datei bearbeiten: ${name}`);
           changeMarkerTargets.push({ element: label, path: item.path, label: `LaTeX-Datei bearbeiten: ${name}` });
-          label.addEventListener('click', async () => {
+          label.addEventListener('click', async (event) => {
+            if (consumeLongPressClick(event)) return;
             if (fileLoadRequest) fileLoadRequest.abort();
             const controller = new AbortController();
             fileLoadRequest = controller;
@@ -2229,7 +2234,9 @@
           activeFileButtons.push({ path: item.path, button: label });
         } else {
           label.className = 'file-readonly';
-          label.setAttribute('role', 'img');
+          label.setAttribute('role', 'button');
+          label.setAttribute('tabindex', '0');
+          label.addEventListener('click', consumeLongPressClick);
           if (item.type !== 'commit' && item.mode !== '160000') label.setAttribute('data-icon', 'locked');
           const reason = item.type === 'commit' || item.mode === '160000'
             ? 'Git-Submodule nicht unterstützt'
@@ -2239,9 +2246,7 @@
           label.setAttribute('aria-label', `${reason}: ${name}`);
         }
         label.textContent = name;
-        row.className = 'file-item deletable';
         row.appendChild(label);
-        row.appendChild(createDeleteButton(item));
       }
       parent.appendChild(row);
     }
@@ -2266,20 +2271,100 @@
     return button;
   }
 
-  function createDeleteButton(item) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = item.type === 'tree' ? 'folder-delete' : 'file-delete';
-    button.setAttribute('data-icon', 'delete');
-    const label = `${item.type === 'tree' ? 'Ordner' : 'Datei'} in den Papierkorb legen: ${item.path}`;
-    button.setAttribute('aria-label', label);
-    button.setAttribute('title', label);
-    button.addEventListener('click', () => deleteProjectItem(item).catch((error) => {
+  let contextItem;
+  let contextAnchor;
+  let longPressTimer;
+  function cancelLongPress() {
+    clearTimeout(longPressTimer);
+    longPressTimer = undefined;
+  }
+  function closeFileContextMenu() {
+    fileContextMenu.hidden = true;
+    contextItem = undefined;
+    contextAnchor = undefined;
+  }
+  function addItemContextMenu(label, item) {
+    let suppressClick = false;
+    let start;
+    label.setAttribute('aria-haspopup', 'menu');
+    label.setAttribute('aria-keyshortcuts', 'Shift+F10');
+    label.setAttribute('title', 'Für Aktionen gedrückt halten');
+    const open = () => {
+      cancelLongPress();
+      contextItem = item;
+      contextAnchor = label;
+      fileContextDelete.setAttribute('aria-label', `${item.type === 'tree' ? 'Ordner' : 'Datei'} löschen: ${item.path}`);
+      const rect = label.getBoundingClientRect();
+      fileContextMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 170))}px`;
+      fileContextMenu.style.top = `${Math.max(8, Math.min(rect.bottom, window.innerHeight - 55))}px`;
+      fileContextMenu.hidden = false;
+      fileContextDelete.focus({ preventScroll: true });
+    };
+    label.addEventListener('pointerdown', (event) => {
+      suppressClick = false;
+      cancelLongPress();
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      longPressTimer = setTimeout(() => {
+        suppressClick = true;
+        open();
+      }, 550);
+    });
+    label.addEventListener('pointermove', (event) => {
+      if (start && event.pointerId === start.id && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancelLongPress();
+    });
+    const finish = (event) => {
+      if (start && event.pointerId === start.id) {
+        cancelLongPress();
+        start = undefined;
+      }
+    };
+    label.addEventListener('pointerup', finish);
+    label.addEventListener('pointercancel', finish);
+    label.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      suppressClick = true;
+      open();
+    });
+    label.addEventListener('keydown', (event) => {
+      suppressClick = false;
+      if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+        event.preventDefault();
+        open();
+      }
+    });
+    return (event) => {
+      if (!suppressClick) return false;
+      suppressClick = false;
+      event?.preventDefault();
+      event?.stopPropagation();
+      return true;
+    };
+  }
+  fileContextDelete.addEventListener('click', () => {
+    const item = contextItem;
+    closeFileContextMenu();
+    if (!item) return;
+    return deleteProjectItem(item).catch((error) => {
       logActivity('Verschieben in den Papierkorb fehlgeschlagen.');
       setStatus(`Verschieben in den Papierkorb fehlgeschlagen: ${error.message}`);
-    }));
-    return button;
-  }
+    });
+  });
+  document.addEventListener('pointerdown', (event) => {
+    if (!fileContextMenu.hidden && !fileContextMenu.contains(event.target)) closeFileContextMenu();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !fileContextMenu.hidden) {
+      const anchor = contextAnchor;
+      closeFileContextMenu();
+      anchor?.focus({ preventScroll: true });
+      event.preventDefault();
+    }
+  });
+  fileList.addEventListener('scroll', () => {
+    cancelLongPress();
+    closeFileContextMenu();
+  });
 
   function renderTrash() {
     const entries = readTrash(projectContext());
@@ -2463,6 +2548,8 @@
   }
 
   function renderSidebar() {
+    cancelLongPress();
+    closeFileContextMenu();
     const tree = renderFileTree(sidebarItems);
     fileList.replaceChildren(tree);
     updateActiveFileButton();
