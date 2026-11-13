@@ -1495,7 +1495,7 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(html, /id="dashboard-create-repo" type="button">Neues GitHub-Repository<\/button>/);
   assert.match(footer, /id="gh-login-btn"[^>]*data-icon="github"/);
   assert.match(footer, /id="toggle-log"[^>]*data-icon/);
-  assert.ok(footer.indexOf('id="toggle-log"') > footer.indexOf('id="app-status"'));
+  assert.ok(footer.indexOf('id="toggle-log"') < footer.indexOf('id="footer-actions"'));
   assert.match(html, /button\[data-icon="log"\]::before \{ content: "\\e1b4"/);
   assert.doesNotMatch(html, /id="repo-label"/);
   assert.match(html, /id="dashboard-open-repo"/);

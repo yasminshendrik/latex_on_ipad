@@ -125,7 +125,6 @@
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
     footer { flex: 0 0 auto; min-height: 46px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
     #footer-actions { display: flex; gap: 6px; }
-    #toggle-log { margin-left: auto; }
     #app-status { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
     @media (orientation: portrait) {
       header { justify-content: initial; }
@@ -350,11 +349,11 @@
     </form>
   </dialog>
   <footer>
+    <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
     <div id="footer-actions">
       <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
     </div>
     <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>
-    <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
   </footer>
   <script src="js/build-info.js"></script>
   <script src="js/diagnostic.js"></script>
