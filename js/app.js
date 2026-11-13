@@ -83,6 +83,7 @@
   const commitError = document.getElementById('commit-error');
   const commitSubmit = document.getElementById('commit-submit');
   const fileList = document.getElementById('file-list');
+  const trashList = document.getElementById('trash-list');
   const projectName = document.getElementById('project-name');
   const projectBranch = document.getElementById('project-branch');
   const projectRepoLink = document.getElementById('project-repo-link');
@@ -200,6 +201,29 @@
     }
   }
   function fileId(repo, branch, path) { return `${repo}\u0000${branch}\u0000${path}`; }
+  function trashKey(context) { return `latex_ipad_trash:${context.repo}:${context.branch}`; }
+  function readTrash(context) {
+    const raw = localStorage.getItem(trashKey(context));
+    if (!raw) return [];
+    const entries = JSON.parse(raw);
+    if (!Array.isArray(entries) || entries.some((entry, index) =>
+      !entry || !isSafeProjectPath(entry.path) || !Array.isArray(entry.items) ||
+      entries.some((other, otherIndex) => otherIndex !== index && other && typeof other.path === 'string' &&
+        (other.path === entry.path || other.path.startsWith(`${entry.path}/`))) ||
+      entry.items.some((item) => !item || !isSafeProjectPath(item.path) || !['tree', 'blob', 'commit'].includes(item.type) ||
+        (item.path !== entry.path && !item.path.startsWith(`${entry.path}/`))))) {
+      throw new Error('Der lokale Papierkorb ist ungültig.');
+    }
+    return entries;
+  }
+  function writeTrash(context, entries) {
+    if (entries.length) localStorage.setItem(trashKey(context), JSON.stringify(entries));
+    else localStorage.removeItem(trashKey(context));
+  }
+  function pathInTrash(path, entries) {
+    return entries.some((entry) => path === entry.path || path.startsWith(`${entry.path}/`));
+  }
+  let trashOperation = false;
 
   function openDatabase() {
     if (dbPromise) return dbPromise;
@@ -347,8 +371,7 @@
       return;
     } catch (error) {
       if (record.binary) {
-        setStatus(`Binärdatei ${path} kann ohne IndexedDB nicht lokal gespeichert werden: ${error.message}`);
-        return;
+        throw new Error(`Binärdatei ${path} kann ohne IndexedDB nicht lokal gespeichert werden: ${error.message}`);
       }
       try {
         localStorage.setItem(`latex_ipad_document:${repo}:${branch}:${path}`, content);
@@ -374,6 +397,91 @@
     catch (error) { setStatus(`IndexedDB-Datei konnte nicht entfernt werden; Fallback wird bereinigt: ${error.message}`); }
     localStorage.removeItem(`latex_ipad_document:${repo}:${branch}:${path}`);
     localStorage.removeItem(fileMetadataKey(repo, branch, path));
+  }
+
+  function trashSnapshotId(context, path) { return `trash\u0000${fileId(context.repo, context.branch, path)}`; }
+  function trashSnapshotKey(context, path) { return `latex_ipad_trash_file:${context.repo}:${context.branch}:${path}`; }
+  async function storeTrashSnapshot(context, record) {
+    const snapshot = { id: trashSnapshotId(context, record.path), original: record };
+    try {
+      await storeRecord('files', snapshot);
+      return 'indexedDB';
+    } catch (error) {
+      if (record.binary) throw new Error(`Binärdatei kann nicht sicher im Papierkorb gespeichert werden: ${error.message}`);
+      localStorage.setItem(trashSnapshotKey(context, record.path), JSON.stringify(snapshot));
+      return 'localStorage';
+    }
+  }
+  async function readTrashSnapshot(context, item) {
+    if (!item.snapshotLocation) return null;
+    let snapshot;
+    if (item.snapshotLocation === 'indexedDB') snapshot = await readRecord('files', trashSnapshotId(context, item.path));
+    else if (item.snapshotLocation === 'localStorage') {
+      const raw = localStorage.getItem(trashSnapshotKey(context, item.path));
+      snapshot = raw === null ? null : JSON.parse(raw);
+    } else throw new Error('Der Speicherort einer Papierkorbdatei ist ungültig.');
+    if (!snapshot?.original || snapshot.original.repo !== context.repo ||
+        snapshot.original.branch !== context.branch || snapshot.original.path !== item.path) {
+      throw new Error(`Die Papierkorbkopie von ${item.path} ist nicht verfügbar.`);
+    }
+    return snapshot.original;
+  }
+  async function removeTrashSnapshot(context, item) {
+    if (item.snapshotLocation === 'indexedDB') await deleteFileRecord(trashSnapshotId(context, item.path));
+    else if (item.snapshotLocation === 'localStorage') localStorage.removeItem(trashSnapshotKey(context, item.path));
+  }
+  async function readTrashOriginal(context, item) {
+    if (item.snapshotLocation === 'indexedDB') {
+      const record = await readRecord('files', fileId(context.repo, context.branch, item.path));
+      if (record) return record;
+    }
+    return readStoredFile(context.repo, context.branch, item.path);
+  }
+  function sameStoredFile(left, right) {
+    if (!left || !right) return left === right;
+    if (left.content !== right.content || left.baseContent !== right.baseContent ||
+        left.remoteSha !== right.remoteSha || left.isNewFile !== right.isNewFile || Boolean(left.binary) !== Boolean(right.binary)) return false;
+    if (!left.binary) return true;
+    const a = left.data;
+    const b = right.data;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let index = 0; index < a.length; index += 1) if (a[index] !== b[index]) return false;
+    return true;
+  }
+
+  async function finalizeCommittedTrash(context) {
+    const entries = readTrash(context);
+    const committed = entries.filter((entry) => entry.committedSha);
+    if (!committed.length) return;
+    for (const entry of committed) {
+      for (const item of entry.items.filter((candidate) => candidate.snapshotLocation)) {
+        const snapshot = await readTrashSnapshot(context, item);
+        const current = await readTrashOriginal(context, item);
+        if (current && !sameStoredFile(current, snapshot)) {
+          throw new Error(`Die lokale Datei ${item.path} wurde nach dem Löschen verändert. Die Papierkorbbereinigung wurde abgebrochen.`);
+        }
+      }
+    }
+    for (const entry of committed) {
+      for (const item of entry.items.filter((candidate) => candidate.type !== 'tree')) {
+        if ('indexedDB' in window) await deleteFileRecord(fileId(context.repo, context.branch, item.path));
+        localStorage.removeItem(`latex_ipad_document:${context.repo}:${context.branch}:${item.path}`);
+        localStorage.removeItem(fileMetadataKey(context.repo, context.branch, item.path));
+      }
+    }
+    const project = readProjectCatalog().find((item) => item.id === context.repo);
+    const sha = committed.at(-1).committedSha;
+    const stored = await storeProject({
+      ...project, id: context.repo, repo: context.repo, branch: context.branch,
+      paths: (project?.paths || []).filter((path) => !pathInTrash(path, committed)),
+      remoteHeadShas: { ...(project?.remoteHeadShas || {}), [context.branch]: sha },
+      updatedAt: Date.now()
+    });
+    if (!stored && 'indexedDB' in window) throw new Error('Die Projektmetadaten konnten nicht vollständig in IndexedDB aktualisiert werden.');
+    writeTrash(context, entries.filter((entry) => !entry.committedSha));
+    for (const entry of committed) {
+      for (const item of entry.items.filter((candidate) => candidate.snapshotLocation)) await removeTrashSnapshot(context, item);
+    }
   }
 
   async function storeProject(project) {
@@ -694,7 +802,8 @@
         if (!paths.has(path)) records.push({ path, content: localStorage.getItem(key) });
       }
     }
-    return records;
+    const trash = readTrash(context);
+    return records.filter((record) => !pathInTrash(record.path, trash));
   }
 
   // Die Auswahl wird pro Projekt und Branch gemerkt; ohne Auswahl wird main.tex vorgeschlagen, sofern vorhanden.
@@ -1264,6 +1373,7 @@
       const previous = await readStoredFile(repo, branch, path);
       const record = {
         ...previous,
+        ...(!previous ? { baseContent: '', isNewFile: true } : {}),
         id: fileId(repo, branch, path),
         repo,
         branch,
@@ -1484,9 +1594,10 @@
   document.getElementById('save-btn').addEventListener('click', () => saveProjectFromButton().catch((error) => showError(error.message)));
 
   async function saveProjectFromButton() {
+    if (trashOperation || newTexFileRequest) throw new Error('Eine andere Projektaktion läuft bereits.');
     const context = projectContext();
     const savedPath = activePath;
-    await persistCurrentFile(true);
+    if (activeFileLoaded || !readTrash(context).length) await persistCurrentFile(true);
     if (!isCurrentContext(context)) {
       logActivity('GitHub-Commit ausgelassen: Projektkontext hat sich nach dem lokalen Speichern geändert.');
       setStatus(`Lokal gespeichert: ${savedPath}. Kein Commit für den geänderten Projektkontext gestartet.`);
@@ -1505,7 +1616,7 @@
       setStatus('Lokale Änderungen bleiben gespeichert; kein Commit für den geänderten Projektkontext gestartet.');
       return;
     }
-    if (!records.some(isChangedTextFile)) {
+    if (!records.some(isChangedTextFile) && !readTrash(context).some((entry) => entry.items.some((item) => item.remoteSha))) {
       setStatus('Lokal gespeichert; es gibt keine neuen Änderungen für GitHub.');
       return;
     }
@@ -1699,7 +1810,8 @@
         ...metadata
       });
     }
-    return [...records.values()];
+    const trash = readTrash(context);
+    return [...records.values()].filter((record) => !pathInTrash(record.path, trash));
   }
 
   function isChangedTextFile(record) {
@@ -1745,7 +1857,8 @@
         if (!markers.has('')) markers.set('', 'modified');
       }
       changeMarkers = markers;
-      saveButton.disabled = markers.size === 0;
+      const deletedRemote = readTrash(context).some((entry) => entry.items.some((item) => item.remoteSha));
+      saveButton.disabled = markers.size === 0 && !deletedRemote;
       saveButton.title = saveButton.disabled ? 'Keine Änderungen' : 'Speichern';
       applyChangeMarkers();
     } catch (error) {
@@ -1770,7 +1883,10 @@
     if (!expectedToken || !navigator.onLine) throw new Error('GitHub-Commit benötigt eine Internetverbindung und ein gültiges Token.');
     const files = await readProjectFileRecords(context);
     const changes = files.filter(isChangedTextFile);
-    if (!changes.length) return { noChanges: true };
+    const trash = readTrash(context);
+    if (trash.some((entry) => entry.committedSha)) throw new Error('Der Papierkorb eines bereits übertragenen Commits muss zuerst lokal bereinigt werden. Bitte das Projekt erneut öffnen.');
+    const deletions = trash.flatMap((entry) => entry.items.filter((item) => item.remoteSha));
+    if (!changes.length && !deletions.length) return { noChanges: true };
     const project = readProjectCatalog().find((item) => item.id === context.repo);
     const baseSha = project?.remoteHeadShas?.[context.branch];
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(baseSha || '')) {
@@ -1790,7 +1906,13 @@
     const treeResponse = await githubApi(`${apiBase}/git/trees/${encodeURIComponent(baseCommit.tree.sha)}?recursive=1`);
     const baseTree = await treeResponse.json();
     if (baseTree.truncated || !Array.isArray(baseTree.tree)) throw new Error('GitHub lieferte keinen vollständigen Remote-Dateibaum.');
-    const remoteFiles = new Map(baseTree.tree.filter((item) => item.type === 'blob').map((item) => [item.path, item]));
+    const remoteFiles = new Map(baseTree.tree.filter((item) => item.type === 'blob' || item.type === 'commit').map((item) => [item.path, item]));
+    for (const item of deletions) {
+      const remote = remoteFiles.get(item.path);
+      if (!remote || remote.sha !== item.remoteSha) {
+        throw new Error(`Der Remote-Stand von ${item.path} im Papierkorb weicht ab. Der Commit wurde abgebrochen.`);
+      }
+    }
     for (const record of changes) {
       if (!isSafeProjectPath(record.path)) throw new Error('Ein lokaler Dateipfad ist ungültig; der Commit wurde abgebrochen.');
       const remoteFile = remoteFiles.get(record.path);
@@ -1823,12 +1945,15 @@
     }
     const treeResponseCreated = await githubWrite(`${apiBase}/git/trees`, 'POST', {
       base_tree: baseCommit.tree.sha,
-      tree: changes.map((record) => ({
+      tree: [...changes.map((record) => ({
         path: record.path,
         mode: '100644',
         type: 'blob',
         sha: blobs.get(record.path)
-      }))
+      })), ...deletions.map((item) => {
+        const remote = remoteFiles.get(item.path);
+        return { path: item.path, mode: remote.mode, type: remote.type, sha: null };
+      })]
     });
     const newTree = await treeResponseCreated.json();
     if (!newTree.sha) throw new Error('GitHub lieferte keinen neuen Projektbaum.');
@@ -1854,17 +1979,20 @@
       throw error;
     }
     try {
+      if (trash.length) writeTrash(context, trash.map((entry) => ({ ...entry, committedSha: newCommit.sha })));
       for (const record of changes) {
+        const current = await readStoredFile(context.repo, context.branch, record.path);
         await storeFile({
           ...record,
+          ...current,
           baseContent: record.content,
           remoteSha: blobs.get(record.path),
           isNewFile: false,
           updatedAt: Date.now()
         });
       }
+      if (trash.length) await finalizeCommittedTrash(context);
       await storeProject({
-        ...project,
         id: context.repo,
         repo: context.repo,
         branch: context.branch,
@@ -1876,7 +2004,8 @@
       throw new Error(`Commit wurde auf GitHub erstellt, aber die lokale Remote-Basis konnte nicht vollständig aktualisiert werden: ${error.message}`);
     }
     logActivity('GitHub-Commit erfolgreich übertragen; lokale Basis-SHAs aktualisiert.');
-    return { noChanges: false, sha: newCommit.sha, count: changes.length };
+    if (isCurrentContext(context)) renderSidebar();
+    return { noChanges: false, sha: newCommit.sha, count: changes.length + deletions.length };
   }
 
   function encodeBase64(value) {
@@ -1997,7 +2126,7 @@
     const root = document.createElement('ul');
     root.className = 'file-tree';
     const project = document.createElement('li');
-    project.className = 'file-item folder-item';
+    project.className = 'file-item folder-item project-item';
     const projectButton = document.createElement('button');
     projectButton.type = 'button';
     projectButton.className = 'folder-toggle';
@@ -2069,6 +2198,7 @@
         row.appendChild(label);
         row.appendChild(children);
         row.appendChild(createFolderAddButton(item.path));
+        row.appendChild(createDeleteButton(item));
         directories.set(item.path, children);
       } else {
         const extension = name.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
@@ -2109,7 +2239,9 @@
           label.setAttribute('aria-label', `${reason}: ${name}`);
         }
         label.textContent = name;
+        row.className = 'file-item deletable';
         row.appendChild(label);
+        row.appendChild(createDeleteButton(item));
       }
       parent.appendChild(row);
     }
@@ -2134,11 +2266,208 @@
     return button;
   }
 
+  function createDeleteButton(item) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = item.type === 'tree' ? 'folder-delete' : 'file-delete';
+    button.setAttribute('data-icon', 'delete');
+    const label = `${item.type === 'tree' ? 'Ordner' : 'Datei'} in den Papierkorb legen: ${item.path}`;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('title', label);
+    button.addEventListener('click', () => deleteProjectItem(item).catch((error) => {
+      logActivity('Verschieben in den Papierkorb fehlgeschlagen.');
+      setStatus(`Verschieben in den Papierkorb fehlgeschlagen: ${error.message}`);
+    }));
+    return button;
+  }
+
+  function renderTrash() {
+    const entries = readTrash(projectContext());
+    const rows = entries.map((entry) => {
+      const row = document.createElement('div');
+      row.className = 'trash-entry';
+      const name = document.createElement('span');
+      name.textContent = entry.committedSha ? `${entry.path} (lokale Bereinigung ausstehend)` : entry.path;
+      const restore = document.createElement('button');
+      restore.type = 'button';
+      restore.setAttribute('data-icon', 'undo');
+      restore.setAttribute('aria-label', `Wiederherstellen: ${entry.path}`);
+      restore.setAttribute('title', `Wiederherstellen: ${entry.path}`);
+      restore.disabled = Boolean(entry.committedSha);
+      restore.addEventListener('click', () => restoreProjectItem(entry).catch((error) => {
+        logActivity('Wiederherstellen aus dem Papierkorb fehlgeschlagen.');
+        setStatus(`Wiederherstellen fehlgeschlagen: ${error.message}`);
+      }));
+      row.append(name, restore);
+      return row;
+    });
+    if (!rows.length) {
+      const empty = document.createElement('span');
+      empty.textContent = 'Papierkorb ist leer.';
+      rows.push(empty);
+    }
+    trashList.replaceChildren(...rows);
+  }
+
+  function setEditorReadOnly(readOnly) {
+    textarea.readOnly = readOnly;
+    if (monacoEditor) monacoEditor.updateOptions({ readOnly });
+  }
+
+  async function deleteProjectItem(item) {
+    if (trashOperation || commitRequest || newTexFileRequest || repositoryLoading) throw new Error('Eine andere Projektaktion läuft bereits.');
+    if (!window.confirm(`${item.type === 'tree' ? 'Ordner' : 'Datei'} „${item.path}“ in den Papierkorb legen?`)) {
+      logActivity('Verschieben in den Papierkorb abgebrochen.');
+      return;
+    }
+    const context = projectContext();
+    trashOperation = true;
+    const previousReadOnly = textarea.readOnly;
+    let activeDeleted = false;
+    let openError;
+    setEditorReadOnly(true);
+    try {
+      clearTimeout(saveTimer);
+      if (activeFileLoaded) await persistCurrentFile();
+      else await saveQueue;
+      if (!isCurrentContext(context)) throw new Error('Das Projekt hat sich geändert.');
+      const items = sidebarItems.filter((candidate) =>
+        candidate.path === item.path || (item.type === 'tree' && candidate.path.startsWith(`${item.path}/`)));
+      if (!items.some((candidate) => candidate.path === item.path)) throw new Error('Der Eintrag ist nicht mehr vorhanden.');
+      const entries = readTrash(context);
+      if (pathInTrash(item.path, entries) || entries.some((entry) => entry.path.startsWith(`${item.path}/`))) {
+        throw new Error('Der Eintrag oder ein untergeordneter Eintrag befindet sich bereits im Papierkorb. Bitte zuerst wiederherstellen oder speichern.');
+      }
+      const records = new Map((await readProjectFileRecords(context)).map((record) => [record.path, record]));
+      const savedItems = items.map((candidate) => {
+        const record = records.get(candidate.path);
+        if (record?.isNewFile && candidate.sha) {
+          throw new Error(`Für ${candidate.path} besteht ein Konflikt mit einer Remote-Datei. Bitte das Repository erneut öffnen.`);
+        }
+        const remoteSha = candidate.type === 'tree' || record?.isNewFile ? null : record?.remoteSha || candidate.sha || null;
+        if (context.repo !== 'local' && candidate.type !== 'tree' && !remoteSha && !record?.isNewFile) {
+          throw new Error(`Für ${candidate.path} fehlt der gespeicherte Remote-Stand; bitte das Repository erneut öffnen.`);
+        }
+        return { ...candidate, remoteSha };
+      });
+      if (!isCurrentContext(context)) throw new Error('Das Projekt hat sich geändert.');
+      const snapshots = [];
+      try {
+        for (const candidate of savedItems) {
+          const record = records.get(candidate.path);
+          if (!record) continue;
+          candidate.snapshotLocation = await storeTrashSnapshot(context, record);
+          snapshots.push(candidate);
+        }
+        if (!isCurrentContext(context)) throw new Error('Das Projekt hat sich geändert.');
+        writeTrash(context, [...entries, { path: item.path, kind: item.type, items: savedItems }]);
+      } catch (error) {
+        try {
+          for (const snapshot of snapshots) await removeTrashSnapshot(context, snapshot);
+        } catch (cleanupError) {
+          throw new Error(`${error.message} Papierkorbkopien konnten nicht vollständig bereinigt werden: ${cleanupError.message}`);
+        }
+        throw error;
+      }
+      activeDeleted = items.some((candidate) => candidate.path === activePath);
+      sidebarItems = sidebarItems.filter((candidate) => !items.includes(candidate));
+      if (activeDeleted) {
+        activeFileLoaded = false;
+        activePath = 'main.tex';
+        setEditorValue('');
+      }
+      renderSidebar();
+      if (activeDeleted) {
+        const next = sidebarItems.find((candidate) => candidate.type === 'blob' && candidate.mode !== '120000' && TEX_FILE.test(candidate.path));
+        if (next) {
+          try { await selectFile(next.path); }
+          catch (error) {
+            logActivity('Nach dem Löschen konnte keine andere Datei geöffnet werden.');
+            openError = error.message;
+          }
+        }
+      }
+      await refreshMainFiles();
+      saveViewState();
+      requestCompile('save', context);
+      logActivity('Eintrag in den Papierkorb verschoben.');
+      setStatus(openError ? `Papierkorb gespeichert; andere Datei konnte nicht geöffnet werden: ${openError}` : `In den Papierkorb verschoben: ${item.path}`);
+    } finally {
+      if (isCurrentContext(context)) setEditorReadOnly(activeDeleted ? !activeFileLoaded : previousReadOnly);
+      trashOperation = false;
+    }
+  }
+
+  async function restoreProjectItem(entry) {
+    if (trashOperation || commitRequest || newTexFileRequest || repositoryLoading) throw new Error('Eine andere Projektaktion läuft bereits.');
+    const context = projectContext();
+    trashOperation = true;
+    let openError;
+    let cleanupError;
+    try {
+      const entries = readTrash(context);
+      const current = entries.find((candidate) => candidate.path === entry.path);
+      if (!current) throw new Error('Der Eintrag befindet sich nicht mehr im Papierkorb.');
+      if (current.committedSha) throw new Error('Der Eintrag wurde bereits ins Repository gespeichert und kann nicht mehr wiederhergestellt werden.');
+      if (sidebarItems.some((item) => item.path === current.path || item.path.startsWith(`${current.path}/`))) {
+        throw new Error('An diesem Pfad existiert bereits ein Eintrag.');
+      }
+      for (const item of current.items.filter((candidate) => candidate.snapshotLocation)) {
+        const snapshot = await readTrashSnapshot(context, item);
+        const existing = await readTrashOriginal(context, item);
+        if (existing && !sameStoredFile(existing, snapshot)) {
+          throw new Error(`Die lokale Datei ${item.path} wurde seit dem Löschen verändert. Wiederherstellen wurde abgebrochen.`);
+        }
+        if (!existing) await storeFile(snapshot);
+      }
+      const project = readProjectCatalog().find((item) => item.id === context.repo);
+      await storeProject({
+        ...project, id: context.repo, repo: context.repo, branch: context.branch,
+        paths: [...new Set([...(project?.branch === context.branch ? project.paths || [] : []),
+          ...current.items.filter((item) => item.type === 'blob').map((item) => item.path)])],
+        updatedAt: Date.now()
+      });
+      if (!isCurrentContext(context)) throw new Error('Das Projekt hat sich geändert.');
+      writeTrash(context, entries.filter((candidate) => candidate.path !== current.path));
+      try {
+        for (const item of current.items.filter((candidate) => candidate.snapshotLocation)) await removeTrashSnapshot(context, item);
+      } catch (error) {
+        cleanupError = error.message;
+        logActivity('Wiederhergestellt; eine Papierkorbkopie konnte nicht bereinigt werden.');
+      }
+      for (const item of current.items) {
+        if (!sidebarItems.some((existing) => existing.path === item.path)) sidebarItems.push(item);
+      }
+      renderSidebar();
+      if (!activeFileLoaded) {
+        const next = current.items.find((item) => item.type === 'blob' && item.mode !== '120000' && TEX_FILE.test(item.path));
+        if (next) {
+          try {
+            await selectFile(next.path);
+            setEditorReadOnly(false);
+          } catch (error) {
+            openError = error.message;
+            logActivity('Wiederhergestellte Datei konnte nicht geöffnet werden.');
+          }
+        }
+      }
+      await refreshMainFiles();
+      saveViewState();
+      requestCompile('save', context);
+      logActivity('Eintrag aus dem Papierkorb wiederhergestellt.');
+      setStatus(openError ? `Wiederhergestellt; Datei konnte nicht geöffnet werden: ${openError}` :
+        cleanupError ? `Wiederhergestellt; Papierkorbkopie konnte nicht bereinigt werden: ${cleanupError}` : `Wiederhergestellt: ${entry.path}`);
+    } finally {
+      trashOperation = false;
+    }
+  }
+
   function renderSidebar() {
     const tree = renderFileTree(sidebarItems);
     fileList.replaceChildren(tree);
     updateActiveFileButton();
     applyChangeMarkers();
+    renderTrash();
     updateChangeState();
   }
 
@@ -2237,6 +2566,10 @@
 
   let newItemContext;
   function openNewTexFileDialog(folder) {
+    if (trashOperation || commitRequest) {
+      setStatus('Eine andere Projektaktion läuft bereits.');
+      return;
+    }
     const option = document.createElement('option');
     option.value = folder;
     option.textContent = folder || 'Projektordner-Wurzel';
@@ -2263,7 +2596,7 @@
   });
   newTexFileForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (newTexFileRequest) return;
+    if (newTexFileRequest || trashOperation || commitRequest) return;
     const fileName = newTexFileName.value.trim();
     const folder = newTexFileFolder.value;
     const isFolder = newTexFileKind.value === 'folder';
@@ -2295,12 +2628,15 @@
     newTexFileRequest = true;
     newTexFileSubmit.disabled = true;
     newTexFileCancel.disabled = true;
-    const previousReadOnly = textarea.readOnly;
+    let previousReadOnly = textarea.readOnly;
     if (!isFolder) {
       textarea.readOnly = true;
       if (monacoEditor) monacoEditor.updateOptions({ readOnly: true });
     }
     try {
+      if (readTrash(context).some((entry) => path === entry.path || path.startsWith(`${entry.path}/`) || entry.path.startsWith(`${path}/`))) {
+        throw new Error('Dieser Pfad ist im Papierkorb belegt. Bitte zuerst wiederherstellen oder ins Repository speichern.');
+      }
       if (!isFolder && activeFileLoaded) {
         clearTimeout(saveTimer);
         await persistCurrentFile();
@@ -2342,6 +2678,7 @@
         activePath = path;
         activeFileLoaded = true;
         setEditorValue('');
+        previousReadOnly = false;
       }
       collapsedFolders.delete(folder);
       saveViewState();
@@ -2383,6 +2720,7 @@
       const merged = new Map(catalog.map((project) => [project.id, project]));
       projects.forEach((project) => merged.set(project.id, { ...merged.get(project.id), ...project }));
       files.forEach((file) => {
+        if (file.original) return;
         const existing = merged.get(file.repo);
         if (existing?.branch && existing.branch !== file.branch) return;
         const project = existing || { id: file.repo, repo: file.repo, branch: file.branch, paths: [] };
@@ -2444,14 +2782,21 @@
     }
     const nextRepo = project.repo === 'local' ? '' : project.repo;
     const nextBranch = project.branch || 'main';
+    const nextContext = { repo: nextRepo || 'local', branch: nextBranch };
+    const needsTrashCleanup = readTrash(nextContext).some((entry) => entry.committedSha);
+    await finalizeCommittedTrash(nextContext);
+    if (needsTrashCleanup) project = readProjectCatalog().find((item) => item.id === nextContext.repo) || project;
     let records = [];
     try { records = await readAllRecords('files'); }
     catch (error) {
       logActivity('IndexedDB-Dateien konnten nicht gelesen werden; lokale Kopien aus localStorage werden verwendet.');
       setStatus(`IndexedDB nicht verfügbar; lokale Kopien aus localStorage werden verwendet: ${error.message}`);
     }
-    const localRecords = records.filter((record) => record.repo === (nextRepo || 'local') && record.branch === nextBranch);
-    const paths = [...new Set([...(project.paths || []), ...localRecords.map((record) => record.path)])].sort();
+    const trash = readTrash({ repo: nextRepo || 'local', branch: nextBranch });
+    const localRecords = records.filter((record) => record.repo === (nextRepo || 'local') &&
+      record.branch === nextBranch && !pathInTrash(record.path, trash));
+    const paths = [...new Set([...(project.paths || []), ...localRecords.map((record) => record.path)])]
+      .filter((path) => !pathInTrash(path, trash)).sort();
     repoName = nextRepo;
     branchName = nextBranch;
     activePath = project.activePath && TEX_FILE.test(project.activePath) && paths.includes(project.activePath)
@@ -2471,10 +2816,11 @@
     localStorage.setItem('gh_current_repo', repoName);
     localStorage.setItem('gh_current_branch', branchName);
     const record = localRecords.find((file) => file.path === activePath);
-    const fallback = localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`);
+    const fallback = pathInTrash(activePath, trash) ? null : localStorage.getItem(`latex_ipad_document:${repoName || 'local'}:${branchName}:${activePath}`);
     const content = record?.content ?? fallback;
     activeFileLoaded = content !== null && content !== undefined;
-    setEditorValue(content ?? DEFAULT_DOCUMENT);
+    setEditorReadOnly(!activeFileLoaded && trash.length > 0 && !paths.some((path) => TEX_FILE.test(path)));
+    setEditorValue(content ?? (textarea.readOnly ? '' : DEFAULT_DOCUMENT));
     updateActiveFileButton();
     refreshMainFiles();
     showEditor();
@@ -2506,7 +2852,7 @@
     if (signal?.aborted) { logActivity('Dateiauswahl abgebrochen.'); return; }
     let content = saved?.content ?? fallback;
     if (content === null || content === undefined) {
-      if (!token || !navigator.onLine) {
+      if (!repoName || !token || !navigator.onLine) {
         throw new Error('Für diese Datei ist keine lokale Kopie verfügbar. Zum ersten Laden bitte online mit GitHub verbinden.');
       }
       const currentToken = token;
@@ -2521,6 +2867,7 @@
     }
     activePath = path;
     activeFileLoaded = true;
+    setEditorReadOnly(false);
     setEditorValue(content);
     updateActiveFileButton();
     await storeFile({
@@ -2554,6 +2901,7 @@
   }
 
   async function downloadRepositoryFiles(repo, branch, tree, signal) {
+    const trash = readTrash({ repo, branch });
     const files = tree.filter((item) => item.type === 'blob');
     const unsupportedPaths = new Set();
     const unsupported = tree
@@ -2579,12 +2927,13 @@
       return [];
     });
     const localByPath = new Map(localRecords
-      .filter((record) => record.repo === repo && record.branch === branch)
+      .filter((record) => record.repo === repo && record.branch === branch && !pathInTrash(record.path, trash))
       .map((record) => [record.path, record]));
     const project = await readRecord('projects', repo).catch(() =>
       readProjectCatalog().find((item) => item.id === repo) || null
     );
     for (const path of project?.branch === branch ? project.paths || [] : []) {
+      if (pathInTrash(path, trash)) continue;
       if (!localByPath.has(path)) {
         const fallback = await readStoredFile(repo, branch, path);
         if (fallback) localByPath.set(path, fallback);
@@ -2764,6 +3113,24 @@
       }
       const targetBranch = nextBranch || preferredBranch || 'main';
       const targetContext = { repo: nextRepo, branch: targetBranch };
+      await finalizeCommittedTrash(targetContext);
+      const trash = readTrash(targetContext);
+      const remoteItems = new Map(tree.map((item) => [item.path, item]));
+      for (const entry of trash) {
+        const deleted = new Map(entry.items.filter((item) => item.remoteSha).map((item) => [item.path, item.remoteSha]));
+        for (const remote of tree.filter((item) => item.type !== 'tree' &&
+          (item.path === entry.path || item.path.startsWith(`${entry.path}/`)))) {
+          if (deleted.get(remote.path) !== remote.sha) {
+            throw new Error(`Im Papierkorb gibt es einen neuen oder geänderten Remote-Eintrag unter ${entry.path}. Bitte den Eintrag wiederherstellen und den Konflikt prüfen.`);
+          }
+        }
+        for (const item of entry.items.filter((candidate) => candidate.remoteSha)) {
+          if (remoteItems.get(item.path)?.sha !== item.remoteSha) {
+            throw new Error(`Der Remote-Stand von ${item.path} im Papierkorb hat sich geändert. Bitte den Eintrag wiederherstellen und den Konflikt prüfen.`);
+          }
+        }
+      }
+      tree = tree.filter((item) => !pathInTrash(item.path, trash));
       const settingsEntry = tree.find((item) => item.path === PROJECT_SETTINGS_PATH);
       if (settingsEntry && (settingsEntry.type !== 'blob' || settingsEntry.mode === '120000')) {
         throw new Error('Die versionierte Projekteinstellungsdatei wird als Symlink oder anderes nicht unterstütztes Objekt gespeichert.');
@@ -2856,8 +3223,9 @@
           ? 'main.tex'
           : availablePaths.find((path) => /\.(tex|latex|ltx)$/i.test(path)) || 'main.tex';
       const activeFile = targetFiles.get(activePath);
-      setEditorValue(activeFile?.content ?? DEFAULT_DOCUMENT);
       activeFileLoaded = Boolean(activeFile);
+      setEditorReadOnly(!activeFileLoaded && trash.length > 0 && !availablePaths.some((path) => TEX_FILE.test(path)));
+      setEditorValue(activeFile?.content ?? (textarea.readOnly ? '' : DEFAULT_DOCUMENT));
       localStorage.setItem('gh_current_repo', repoName);
       localStorage.setItem('gh_current_branch', branchName);
       updateProjectProperties();

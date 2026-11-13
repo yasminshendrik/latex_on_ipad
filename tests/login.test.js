@@ -12,7 +12,7 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'dashboa
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'branch-selector', 'project-settings-button', 'project-settings-dialog', 'project-settings-close',
-  'file-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
+  'file-list', 'trash-list', 'sidebar', 'sidebar-resize', 'toggle-sidebar', 'tex-only-filter', 'toggle-preview', 'save-btn',
   'new-tex-file-dialog', 'new-tex-file-form', 'new-tex-file-folder', 'new-tex-file-kind', 'new-tex-file-name', 'new-tex-file-error',
   'new-tex-file-submit', 'new-tex-file-cancel', 'commit-dialog', 'commit-form', 'commit-message', 'commit-error', 'commit-submit', 'commit-cancel',
   'create-repo-dialog', 'create-repo-form', 'create-repo-name', 'create-repo-description',
@@ -98,7 +98,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   let replacement;
   const intervals = [];
   const logs = [];
-  const window = { addEventListener() {}, matchMedia: () => ({ matches: false }), __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, confirm: confirmImpl, crypto: webcrypto, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
+  const window = { addEventListener() {}, matchMedia: () => ({ matches: false }), __technicalLog: (message) => logs.push(message), __setCompilerLog: (text) => { window.compilerLog = text; }, confirm: confirmImpl || (() => true), crypto: webcrypto, pdfjsLib: pdfjs, ...(indexedDB ? { indexedDB } : {}) };
   if (monaco) {
     window.crypto = {};
     window.monaco = monaco;
@@ -138,7 +138,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   );
   const testSource = exposeSave
     ? pdfTestSource.replace('  initialize();', `  window.testSave = {
-        persistCurrentFile, readRemoteFile, readProjectTexPacks, readProjectRecords,
+        persistCurrentFile, readRemoteFile, readProjectTexPacks, readProjectRecords, loadRepository,
         setContext(repo, branch, path) { repoName = repo; branchName = branch; activePath = path; }
       };
   initialize();`)
@@ -1605,6 +1605,389 @@ test('Geänderte Projekteinstellungen aktivieren Speichern auch ohne Dateiänder
   assert.equal(app.elements['save-btn'].disabled, false);
   await app.elements['save-btn'].handlers.click();
   assert.equal(app.elements['commit-dialog'].open, true);
+});
+
+test('Gelöschte aktive Datei bleibt offline im Papierkorb und kann vollständig wiederhergestellt werden', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Lokale Änderung';
+  app.elements.editor.handlers.input();
+  const projectRow = () => app.elements['file-list'].children[0].children[0];
+  const file = projectRow().children[1].children.find((row) => row.children[0].textContent === 'main.tex');
+  await file.children[1].handlers.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['trash-list'].children[0].children[0].textContent, 'main.tex');
+  assert.equal(app.elements.editor.readOnly, true);
+  assert.equal(app.elements['save-btn'].disabled, false);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Lokale Änderung');
+  await app.elements['open-dashboard'].handlers.click();
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.readOnly, true);
+  assert.ok(!projectRow().children[1].children.some((row) => row.children[0]?.textContent === 'main.tex'));
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.value, 'Lokale Änderung');
+  assert.equal(app.elements.editor.readOnly, false);
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+});
+
+test('Abbruch beim Löschen und Pfadkonflikt bewahren die Datei', async () => {
+  const app = setup({ fetchImpl: syncApiFetch(), confirmImpl: () => false });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  assert.ok(app.logs.some((entry) => /Papierkorb abgebrochen/.test(entry)));
+
+  app.context.window.confirm = () => true;
+  await row.children[1].handlers.click();
+  app.elements['file-list'].children[0].children[0].children[2].handlers.click();
+  app.elements['new-tex-file-name'].value = 'main.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['new-tex-file-error'].textContent, /Papierkorb belegt/);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Remote-Hauptdatei');
+});
+
+test('Commit überträgt Löschungen und leert den Papierkorb erst nach erfolgreichem Push', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.elements['commit-dialog'].open, true);
+  app.elements['commit-message'].value = 'Datei entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  const request = app.requests.find((item) => item.url.endsWith('/git/trees') && item.options.method === 'POST');
+  assert.ok(request, app.elements['commit-error'].textContent);
+  const deleted = JSON.parse(request.options.body).tree.find((item) => item.path === 'main.tex');
+  assert.equal(deleted.sha, null);
+  assert.equal(deleted.mode, '100644');
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  assert.equal(app.localValues.has('latex_ipad_document:alice/project:main:main.tex'), false);
+});
+
+test('Eine einzelne Löschung kann ohne weitere Dateiänderungen übertragen werden', async () => {
+  const settingsContent = JSON.stringify({ version: 1, mainFiles: { main: 'main.tex' }, hyphenation: 'auto' });
+  const treeItems = [
+    { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', mode: '100644' },
+    { type: 'blob', path: 'alt.tex', sha: 'old-blob-sha', mode: '100644' },
+    { type: 'tree', path: '.latex-ipad', sha: 'settings-tree' },
+    { type: 'blob', path: '.latex-ipad/settings.json', sha: 'settings-sha', mode: '100644' }
+  ];
+  const app = setup({ fetchImpl: syncApiFetch({ treeItems, settingsContent }) });
+  await openSyncRepository(app);
+  const rows = app.elements['file-list'].children[0].children[0].children[1].children;
+  await rows.find((row) => row.children[0].textContent === 'alt.tex').children[1].handlers.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, false);
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Alte Datei entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  const request = app.requests.find((item) => item.url.endsWith('/git/trees') && item.options.method === 'POST');
+  assert.ok(request, app.elements['commit-error'].textContent);
+  const tree = JSON.parse(request.options.body).tree;
+  assert.equal(tree.length, 1);
+  assert.equal(tree[0].path, 'alt.tex');
+  assert.equal(tree[0].sha, null);
+});
+
+test('Fehlgeschlagener Commit erhält den Papierkorb und die gelöschte Datei', async () => {
+  const app = setup({ fetchImpl: syncApiFetch({ writeStatus: 403 }) });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Datei entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /403/);
+  assert.ok(app.localValues.has('latex_ipad_trash:alice/project:main'));
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Remote-Hauptdatei');
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
+});
+
+test('Ein fehlgeschlagener Branch-Push leert den Papierkorb nicht', async () => {
+  const api = syncApiFetch();
+  const app = setup({ fetchImpl: (url, options) =>
+    url.endsWith('/git/refs/heads/main') && options?.method === 'PATCH'
+      ? response({}, { status: 403 }) : api(url, options)
+  });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Datei entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /403/);
+  assert.ok(app.localValues.has('latex_ipad_trash:alice/project:main'));
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Remote-Hauptdatei');
+});
+
+test('Ein Speicherfehler beim Papierkorb lässt den Eintrag unverändert', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const storage = app.context.localStorage;
+  const setItem = storage.setItem;
+  storage.setItem = (key, value) => {
+    if (key.startsWith('latex_ipad_trash:')) throw new Error('Speicher voll');
+    setItem(key, value);
+  };
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  assert.match(app.footer.textContent, /Speicher voll/);
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Remote-Hauptdatei');
+  assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
+  assert.equal(app.elements.editor.readOnly, false);
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+});
+
+test('Papierkorbkopie schützt gelöschten Inhalt bei fehlender oder veränderter Originaldatei', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  const fileKey = 'latex_ipad_document:alice/project:main:main.tex';
+  app.localValues.set(fileKey, 'Parallel geändert');
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  assert.match(app.footer.textContent, /seit dem Löschen verändert/);
+  assert.equal(app.localValues.get(fileKey), 'Parallel geändert');
+  assert.ok(app.localValues.has('latex_ipad_trash:alice/project:main'));
+  app.localValues.delete(fileKey);
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.value, 'Remote-Hauptdatei');
+  assert.equal(app.localValues.get(fileKey), 'Remote-Hauptdatei');
+});
+
+test('Nach dem Push werden parallel veränderte lokale Dateien nicht durch die Bereinigung gelöscht', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  const fileKey = 'latex_ipad_document:alice/project:main:main.tex';
+  app.localValues.set(fileKey, 'Parallel geändert');
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Datei entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /nach dem Löschen verändert/);
+  assert.equal(app.localValues.get(fileKey), 'Parallel geändert');
+  assert.ok(app.localValues.has('latex_ipad_trash:alice/project:main'));
+});
+
+test('Nach dem Löschen der letzten Datei kann eine neue Datei bearbeitet werden', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const project = () => app.elements['file-list'].children[0].children[0];
+  await project().children[1].children[0].children[1].handlers.click();
+  assert.equal(app.elements.editor.readOnly, true);
+  project().children[2].handlers.click();
+  app.elements['new-tex-file-name'].value = 'neu.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.elements.editor.readOnly, false);
+  app.elements.editor.value = 'Neuer Inhalt';
+  app.elements.editor.handlers.input();
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:neu.tex'), 'Neuer Inhalt');
+  assert.equal(app.elements['new-tex-file-dialog'].open, false);
+});
+
+test('Nach erfolgreichem Push wird eine unterbrochene lokale Papierkorbbereinigung fortgesetzt', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
+  await row.children[1].handlers.click();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Datei entfernen';
+  const storage = app.context.localStorage;
+  const removeItem = storage.removeItem;
+  storage.removeItem = (key) => {
+    if (key === 'latex_ipad_document:alice/project:main:main.tex') throw new Error('Lokaler Speicher blockiert');
+    removeItem(key);
+  };
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.match(app.elements['commit-error'].textContent, /Commit wurde auf GitHub erstellt/);
+  assert.equal(JSON.parse(app.localValues.get('latex_ipad_trash:alice/project:main'))[0].committedSha, 'commit-created');
+  storage.removeItem = removeItem;
+  await app.elements['open-dashboard'].handlers.click();
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  assert.equal(app.localValues.has('latex_ipad_document:alice/project:main:main.tex'), false);
+  const project = app.elements['file-list'].children[0].children[0];
+  assert.ok(!project.children[1].children.some((row) => row.children[0]?.textContent === 'main.tex'));
+});
+
+test('Auch nie übertragene Dateien bleiben bis zum nächsten Commit im Papierkorb', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  const project = () => app.elements['file-list'].children[0].children[0];
+  project().children[2].handlers.click();
+  app.elements['new-tex-file-name'].value = 'neu.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  const row = project().children[1].children.find((item) => item.children[0].textContent === 'neu.tex');
+  await row.children[1].handlers.click();
+  assert.ok(app.localValues.has('latex_ipad_document:alice/project:main:neu.tex'));
+  app.elements.editor.value = 'Hauptdatei geändert';
+  app.elements.editor.handlers.input();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Änderungen sichern';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  assert.equal(app.localValues.has('latex_ipad_document:alice/project:main:neu.tex'), false);
+});
+
+test('Änderungen während eines laufenden Commits bleiben lokal erhalten', async () => {
+  const api = syncApiFetch();
+  let releasePatch;
+  let notifyPatch;
+  const patchStarted = new Promise((resolve) => { notifyPatch = resolve; });
+  const patchGate = new Promise((resolve) => { releasePatch = resolve; });
+  const app = setup({ exposeSave: true, fetchImpl: async (url, options) => {
+    if (url.endsWith('/git/refs/heads/main') && options?.method === 'PATCH') {
+      notifyPatch();
+      await patchGate;
+    }
+    return api(url, options);
+  } });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Erster Stand';
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Ersten Stand sichern';
+  const commit = app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  await patchStarted;
+  app.elements.editor.value = 'Neuerer Stand';
+  await app.context.window.testSave.persistCurrentFile();
+  releasePatch();
+  await commit;
+  assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Neuerer Stand');
+  const metadata = JSON.parse(app.localValues.get('latex_ipad_file_metadata:alice/project:main:main.tex'));
+  assert.equal(metadata.baseContent, 'Erster Stand');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, false);
+});
+
+test('Die erste Datei eines leeren Repositorys wird als neue Datei übertragen', async () => {
+  const app = setup({ fetchImpl: syncApiFetch({ treeItems: [] }) });
+  await openSyncRepository(app);
+  app.elements.editor.value = 'Neues Dokument';
+  app.elements.editor.handlers.input();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Erste Datei';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  const request = app.requests.find((item) => item.url.endsWith('/git/trees') && item.options.method === 'POST');
+  assert.ok(request, app.elements['commit-error'].textContent);
+  assert.ok(JSON.parse(request.options.body).tree.some((item) => item.path === 'main.tex' && item.sha));
+});
+
+test('Ordner mit Binärdatei bleibt im Papierkorb offline bytegenau wiederherstellbar', async () => {
+  const treeItems = [
+    { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', mode: '100644' },
+    { type: 'tree', path: 'bilder', sha: 'folder-sha' },
+    { type: 'blob', path: 'bilder/grafik.png', sha: 'binary-sha', mode: '100644' }
+  ];
+  const api = syncApiFetch({ treeItems });
+  const indexedDB = new IDBFactory();
+  const app = setup({
+    indexedDBInstance: indexedDB, exposeSave: true,
+    fetchImpl: (url, options) => url.includes('/contents/bilder/grafik.png')
+      ? { ok: true, arrayBuffer: async () => new Uint8Array([0, 255, 13, 27]).buffer }
+      : api(url, options)
+  });
+  await openSyncRepository(app);
+  app.elements['tex-only-filter'].checked = false;
+  app.elements['tex-only-filter'].handlers.change();
+  const project = app.elements['file-list'].children[0].children[0];
+  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'bilder');
+  await folder.children[3].handlers.click();
+  let records = await app.context.window.testSave.readProjectRecords({ repo: 'alice/project', branch: 'main' });
+  assert.ok(!records.some((record) => record.path === 'bilder/grafik.png'));
+  const db = await new Promise((resolve, reject) => {
+    const request = indexedDB.open('LaTeXPWA_VFS');
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction('files', 'readwrite');
+    transaction.objectStore('files').delete('alice/project\u0000main\u0000bilder/grafik.png');
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  await app.elements['open-dashboard'].handlers.click();
+  app.context.navigator.onLine = false;
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  records = await app.context.window.testSave.readProjectRecords({ repo: 'alice/project', branch: 'main' });
+  const binary = records.find((record) => record.path === 'bilder/grafik.png');
+  assert.ok(binary.binary);
+  assert.deepEqual([...binary.data], [0, 255, 13, 27]);
+});
+
+test('Überlappende Löschungen im Papierkorb werden sicher abgewiesen', async () => {
+  const treeItems = [
+    { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', mode: '100644' },
+    { type: 'tree', path: 'kapitel', sha: 'folder-sha' },
+    { type: 'blob', path: 'kapitel/a.tex', sha: 'chapter-sha', mode: '100644' }
+  ];
+  const app = setup({ fetchImpl: syncApiFetch({ treeItems }) });
+  await openSyncRepository(app);
+  app.elements['tex-only-filter'].checked = false;
+  app.elements['tex-only-filter'].handlers.change();
+  const folder = () => app.elements['file-list'].children[0].children[0].children[1].children.find(
+    (row) => row.children[0].textContent === 'kapitel'
+  );
+  await folder().children[1].children[0].children[1].handlers.click();
+  await folder().children[3].handlers.click();
+  assert.match(app.footer.textContent, /untergeordneter Eintrag befindet sich bereits im Papierkorb/);
+  assert.ok(folder());
+  await app.elements['trash-list'].children[0].children[1].handlers.click();
+  assert.ok(folder().children[1].children.some((row) => row.children[0].textContent === 'a.tex'));
+});
+
+test('Ein gelöschter Ordner überträgt alle Remote-Dateien und Submodule als Löschungen', async () => {
+  const treeItems = [
+    { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', mode: '100644' },
+    { type: 'tree', path: 'kapitel', sha: 'folder-sha' },
+    { type: 'blob', path: 'kapitel/a.tex', sha: 'chapter-sha', mode: '100644' },
+    { type: 'blob', path: 'kapitel/.gitignore', sha: 'ignore-sha', mode: '100644' },
+    { type: 'blob', path: 'kapitel/link', sha: 'link-sha', mode: '120000' },
+    { type: 'commit', path: 'kapitel/modul', sha: 'submodule-sha', mode: '160000' }
+  ];
+  const app = setup({ fetchImpl: syncApiFetch({ treeItems }) });
+  await openSyncRepository(app);
+  const project = app.elements['file-list'].children[0].children[0];
+  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'kapitel');
+  await folder.children[3].handlers.click();
+  await app.elements['save-btn'].handlers.click();
+  app.elements['commit-message'].value = 'Ordner entfernen';
+  await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
+  const request = app.requests.find((item) => item.url.endsWith('/git/trees') && item.options.method === 'POST');
+  assert.ok(request, app.elements['commit-error'].textContent);
+  const deleted = JSON.parse(request.options.body).tree.filter((item) => item.sha === null);
+  assert.deepEqual(deleted.map((item) => item.path).sort(), ['kapitel/.gitignore', 'kapitel/a.tex', 'kapitel/link', 'kapitel/modul']);
+  assert.equal(deleted.find((item) => item.path === 'kapitel/link').mode, '120000');
+  assert.equal(deleted.find((item) => item.path === 'kapitel/modul').mode, '160000');
+  assert.equal(deleted.find((item) => item.path === 'kapitel/modul').type, 'commit');
+});
+
+test('Online-Neuladen bewahrt Löschungen und verweigert neue Remote-Dateien im gelöschten Ordner', async () => {
+  let changed = false;
+  const baseTree = [
+    { type: 'blob', path: 'main.tex', sha: 'main-blob-sha', mode: '100644' },
+    { type: 'tree', path: 'kapitel', sha: 'folder-sha' },
+    { type: 'blob', path: 'kapitel/a.tex', sha: 'chapter-sha', mode: '100644' }
+  ];
+  const base = syncApiFetch({ treeItems: baseTree });
+  const newer = syncApiFetch({ treeItems: [...baseTree, { type: 'blob', path: 'kapitel/b.tex', sha: 'new-sha', mode: '100644' }] });
+  const app = setup({ exposeSave: true, fetchImpl: (url, options) => (changed ? newer : base)(url, options) });
+  await openSyncRepository(app);
+  const project = app.elements['file-list'].children[0].children[0];
+  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'kapitel');
+  await folder.children[3].handlers.click();
+  const before = app.requests.filter((request) => request.url.includes('/contents/kapitel/a.tex')).length;
+  await app.context.window.testSave.loadRepository('alice/project', 'main');
+  assert.equal(app.requests.filter((request) => request.url.includes('/contents/kapitel/a.tex')).length, before);
+  assert.equal(app.elements['trash-list'].children[0].children[0].textContent, 'kapitel');
+  changed = true;
+  await assert.rejects(app.context.window.testSave.loadRepository('alice/project', 'main'), /neuen oder geänderten Remote-Eintrag/);
+  assert.ok(app.localValues.has('latex_ipad_trash:alice/project:main'));
 });
 
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {

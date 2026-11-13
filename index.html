@@ -39,6 +39,7 @@
     button[data-icon="delete"]::before { content: "\e03d"; }
     button[data-icon="copy"]::before { content: "\e245"; }
     button[data-icon="accept"]::before { content: "\e05b"; }
+    button[data-icon="undo"]::before { content: "\e1e0"; }
     button[data-icon="github"]::before {
       content: ""; width: 20px; height: 20px; font-size: 0; background-color: currentColor;
       -webkit-mask: url("./icons/github-mark.svg") center / contain no-repeat;
@@ -69,10 +70,19 @@
     #sidebar-resize:focus-visible { outline: 2px solid #50b6ff; outline-offset: -2px; }
     .sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px 6px 12px; color: #aaa; font-size: 12px; border-bottom: 1px solid #3a3a3a; }
     .sidebar-heading button { flex: 0 0 auto; }
-    #file-list { overflow: auto; flex: 1; }
+    #file-list { overflow: auto; flex: 1; padding-right: 16px; }
     .file-item { position: relative; padding: 4px 8px; overflow-wrap: anywhere; }
-    .file-item.folder-item { padding-right: 50px; }
+    .folder-item > .folder-toggle[data-icon] { width: max(0px, 100% - 96px); }
+    .project-item > .folder-toggle[data-icon] { width: max(0px, 100% - 50px); }
+    .file-item.deletable > .file-select-button { width: max(0px, 100% - 46px); }
+    .file-item.deletable > .file-readonly { display: inline-block; max-width: calc(100% - 46px); }
     .folder-add { position: absolute; top: 4px; right: 4px; }
+    .folder-delete { position: absolute; top: 4px; right: 48px; }
+    .file-delete { position: absolute; top: 4px; right: 4px; }
+    #trash { border-top: 1px solid var(--fiori-border); padding: 8px 20px 8px 8px; max-height: 30%; overflow: auto; }
+    #trash h3 { margin: 0 0 4px; font-size: 13px; }
+    .trash-entry { display: flex; align-items: center; gap: 8px; }
+    .trash-entry span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
     [data-change="new"]::after { content: " · Neu"; color: #107e3e; font-size: 12px; }
     [data-change="modified"]::after { content: " · Geändert"; color: #9c5000; font-size: 12px; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
@@ -233,6 +243,7 @@
       <div class="sidebar-heading"><span>PROJEKTDATEIEN</span></div>
       <label class="sidebar-filter"><input id="tex-only-filter" type="checkbox" checked> Nur TeX-Dateien</label>
       <div id="file-list"><div style="padding:12px;color:#888">Mit GitHub verbinden und ein Repo wählen.</div></div>
+      <section id="trash" aria-labelledby="trash-title"><h3 id="trash-title">Papierkorb</h3><div id="trash-list"></div></section>
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <section id="editor-container">
