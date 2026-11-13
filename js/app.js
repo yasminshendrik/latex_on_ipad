@@ -1392,37 +1392,35 @@
     logActivity('Größe der PDF-Vorschau geändert.');
   });
   updatePreviewResizer();
-  function resizeSidebar(size, portrait) {
+  function resizeSidebar(size) {
     const bounds = document.getElementById('main-container').getBoundingClientRect();
-    const minimum = portrait ? 120 : 180;
-    const maximum = Math.max(minimum, (portrait ? bounds.height : bounds.width) - 120);
+    const minimum = 180;
+    const maximum = Math.max(minimum, sidebarPortrait() ? bounds.width : bounds.width - 120);
     const value = Math.max(minimum, Math.min(maximum, size));
-    sidebar.style.setProperty(portrait ? '--sidebar-height' : '--sidebar-width', `${value}px`);
+    sidebar.style.setProperty('--sidebar-width', `${value}px`);
     sidebarResize.setAttribute('aria-valuemin', String(minimum));
     sidebarResize.setAttribute('aria-valuemax', String(Math.round(maximum)));
     sidebarResize.setAttribute('aria-valuenow', String(Math.round(value)));
   }
   function syncResizeOrientation() {
-    const portrait = sidebarPortrait();
-    sidebarResize.setAttribute('aria-orientation', portrait ? 'horizontal' : 'vertical');
+    sidebarResize.setAttribute('aria-orientation', 'vertical');
     const bounds = document.getElementById('main-container').getBoundingClientRect();
-    const minimum = portrait ? 120 : 180;
+    const minimum = 180;
     sidebarResize.setAttribute('aria-valuemin', String(minimum));
-    sidebarResize.setAttribute('aria-valuemax', String(Math.round(Math.max(minimum, (portrait ? bounds.height : bounds.width) - 120))));
+    sidebarResize.setAttribute('aria-valuemax', String(Math.round(Math.max(minimum, sidebarPortrait() ? bounds.width : bounds.width - 120))));
     const size = sidebar.getBoundingClientRect();
-    sidebarResize.setAttribute('aria-valuenow', String(Math.round(portrait ? size.height : size.width)));
+    sidebarResize.setAttribute('aria-valuenow', String(Math.round(size.width)));
   }
   sidebarResize.addEventListener('pointerdown', (event) => {
     if (sidebar.classList.contains('collapsed') || event.button !== 0) return;
-    const portrait = sidebarPortrait();
     const bounds = sidebar.getBoundingClientRect();
-    resizeDrag = { id: event.pointerId, portrait, start: portrait ? event.clientY : event.clientX, size: portrait ? bounds.height : bounds.width };
+    resizeDrag = { id: event.pointerId, start: event.clientX, size: bounds.width };
     sidebarResize.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
   sidebarResize.addEventListener('pointermove', (event) => {
     if (!resizeDrag || resizeDrag.id !== event.pointerId) return;
-    resizeSidebar(resizeDrag.size + (resizeDrag.portrait ? event.clientY : event.clientX) - resizeDrag.start, resizeDrag.portrait);
+    resizeSidebar(resizeDrag.size + event.clientX - resizeDrag.start);
   });
   function finishSidebarResize(event) {
     if (!resizeDrag || resizeDrag.id !== event.pointerId) return;
@@ -1433,13 +1431,12 @@
   sidebarResize.addEventListener('pointercancel', finishSidebarResize);
   sidebarResize.addEventListener('lostpointercapture', finishSidebarResize);
   sidebarResize.addEventListener('keydown', (event) => {
-    const portrait = sidebarPortrait();
-    const increase = portrait ? 'ArrowDown' : 'ArrowRight';
-    const decrease = portrait ? 'ArrowUp' : 'ArrowLeft';
+    const increase = 'ArrowRight';
+    const decrease = 'ArrowLeft';
     if (event.key !== increase && event.key !== decrease) return;
     event.preventDefault();
     const bounds = sidebar.getBoundingClientRect();
-    resizeSidebar((portrait ? bounds.height : bounds.width) + (event.key === increase ? 20 : -20), portrait);
+    resizeSidebar(bounds.width + (event.key === increase ? 20 : -20));
     logActivity('Sidebar-Größe geändert.');
   });
   window.addEventListener('resize', syncResizeOrientation);

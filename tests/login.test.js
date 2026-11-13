@@ -547,12 +547,13 @@ test('Sidebar-Größe ist per Zeiger und Tastatur mit Mindestgröße in beiden A
   resize.handlers.pointerup({ pointerId: 1 });
   assert.equal(app.elements.sidebar.style['--sidebar-width'], '180px');
   portrait = true;
-  resize.handlers.pointerdown({ button: 0, pointerId: 2, clientX: 0, clientY: 145, preventDefault() {} });
-  resize.handlers.pointermove({ pointerId: 2, clientX: 0, clientY: 0 });
+  resize.handlers.pointerdown({ button: 0, pointerId: 2, clientX: 250, clientY: 145, preventDefault() {} });
+  resize.handlers.pointermove({ pointerId: 2, clientX: 0, clientY: 145 });
   resize.handlers.pointerup({ pointerId: 2 });
-  assert.equal(app.elements.sidebar.style['--sidebar-height'], '120px');
-  resize.handlers.keydown({ key: 'ArrowDown', preventDefault() {} });
-  assert.equal(app.elements.sidebar.style['--sidebar-height'], '165px');
+  assert.equal(app.elements.sidebar.style['--sidebar-width'], '180px');
+  resize.handlers.keydown({ key: 'ArrowRight', preventDefault() {} });
+  assert.equal(app.elements.sidebar.style['--sidebar-width'], '270px');
+  assert.equal(resize.getAttribute('aria-orientation'), 'vertical');
   assert.ok(app.logs.some((entry) => /Sidebar-Größe geändert/.test(entry)));
 });
 
@@ -1466,7 +1467,8 @@ test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausricht
   assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
   assert.match(html, /#preview-container \{ display: none; flex: 0 0 var\(--preview-size, 40%\);/);
   assert.match(html, /id="preview-resize" role="separator"[^>]*aria-valuemin="20"[^>]*aria-valuemax="70"/);
-  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ width: 100%; height: min\(var\(--sidebar-height/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#main-container \{ flex-direction: column; \}[\s\S]*?#sidebar \{ position: absolute; z-index: 2; top: 0; bottom: 0; left: 0; width: min\(var\(--sidebar-width, 250px\), 100%\);/);
+  assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#sidebar\.collapsed \{ width: 0; box-shadow: none; \}/);
   assert.match(html, /@media \(orientation: portrait\)[\s\S]*?#preview-resize \{ flex-basis: 16px; cursor: row-resize; \}/);
 });
 
