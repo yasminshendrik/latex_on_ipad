@@ -73,21 +73,21 @@ test('Vorhandenes Diagnoseprotokoll ist standardmäßig verborgen und ein-/ausbl
   assert.equal(app.toggle.attributes['aria-expanded'], 'false');
 });
 
-test('Alle Protokollaktionen bleiben ohne Icon-Schrift sichtbar beschriftet', () => {
+test('Reiter sind beschriftet, Aktionen reine Icons mit zugänglichem Namen', () => {
   const heading = setup().panel.children[0];
   const tabs = heading.children.find((child) => child.id === 'technical-log-tabs');
-  for (const button of [...tabs.children, ...heading.children.filter((child) => child.tagName === 'button')]) {
-    assert.ok(button.textContent);
+  for (const button of [...tabs.children, ...heading.children.find((child) => child.id === 'technical-log-actions').children]) {
+    assert.ok(button.textContent || button.attributes['aria-label']);
     assert.equal(button.attributes['data-icon'], undefined);
   }
-  assert.equal(heading.children.find((child) => child.textContent === 'Leeren').attributes['data-log-icon'], 'delete');
-  assert.equal(heading.children.find((child) => child.textContent === 'Kopieren').attributes['data-log-icon'], 'copy');
+  assert.equal(heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll leeren').attributes['data-log-icon'], 'delete');
+  assert.equal(heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll kopieren').attributes['data-log-icon'], 'copy');
 });
 
 test('Protokoll leeren leert den bestehenden Log ohne zusätzliche Leermeldung', () => {
   const app = setup();
   const heading = app.panel.children[0];
-  const clearButton = heading.children.find((child) => child.textContent === 'Leeren');
+  const clearButton = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll leeren');
   const message = heading.children.find((child) => child.id === 'technical-log-message');
   clearButton.handlers.click();
   assert.equal(app.sessionValues.has('latex_pwa_diagnostic_log'), false);
@@ -98,7 +98,7 @@ test('Protokoll leeren leert den bestehenden Log ohne zusätzliche Leermeldung',
 test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funktion kopieren', async () => {
   const app = setup();
   const heading = app.panel.children[0];
-  const copyButton = heading.children.find((child) => child.textContent === 'Kopieren');
+  const copyButton = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll kopieren');
   const message = heading.children.find((child) => child.id === 'technical-log-message');
 
   await copyButton.handlers.click();
@@ -106,20 +106,20 @@ test('Alle Protokolleinträge lassen sich über die Zwischenablage-Fallback-Funk
   assert.equal(app.copied[0].command, 'copy');
   assert.match(app.copied[0].text, /Diagnoseprotokoll gestartet/);
   assert.equal(message.textContent, '');
-  assert.equal(copyButton.textContent, 'Kopiert');
+  assert.equal(copyButton.attributes['data-log-icon'], 'accept');
   assert.equal(copyButton.attributes['aria-label'], 'Protokoll kopiert');
   const firstTimerId = [...app.timers.keys()][0];
   await copyButton.handlers.click();
   assert.equal(app.timers.has(firstTimerId), false);
-  assert.equal(copyButton.textContent, 'Kopiert');
+  assert.equal(copyButton.attributes['data-log-icon'], 'accept');
   const [timerId, feedback] = [...app.timers.entries()][0];
   assert.equal(feedback.delay, 1500);
   feedback.callback();
   assert.equal(app.timers.has(timerId), false);
-  assert.equal(copyButton.textContent, 'Kopieren');
+  assert.equal(copyButton.attributes['data-log-icon'], 'copy');
   assert.equal(copyButton.attributes['aria-label'], 'Aktuelles Protokoll kopieren');
 
-  const clearButton = heading.children.find((child) => child.textContent === 'Leeren');
+  const clearButton = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll leeren');
   clearButton.handlers.click();
   await copyButton.handlers.click();
   assert.equal(message.textContent, 'Kein Inhalt zum Kopieren.');
@@ -130,8 +130,8 @@ test('Reiter und Fehlerverweis schalten um; Kopieren und Leeren betreffen nur de
   const heading = app.panel.children[0];
   const tabs = heading.children.find((child) => child.id === 'technical-log-tabs');
   const [general, compiler] = tabs.children;
-  const clear = heading.children.find((child) => child.textContent === 'Leeren');
-  const copy = heading.children.find((child) => child.textContent === 'Kopieren');
+  const clear = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll leeren');
+  const copy = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll kopieren');
   const [generalPanel, compilerPanel] = app.panel.children.slice(1);
 
   app.window.__setCompilerLog('Fehler: vertraulicher Inhalt');
@@ -168,7 +168,7 @@ test('Fehler beim Kopieren werden angezeigt und leeres Compiler-Protokoll wird n
   const app = setup();
   const heading = app.panel.children[0];
   const compiler = heading.children.find((child) => child.id === 'technical-log-tabs').children[1];
-  const copy = heading.children.find((child) => child.textContent === 'Kopieren');
+  const copy = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll kopieren');
   const message = heading.children.find((child) => child.id === 'technical-log-message');
   compiler.handlers.click();
   await copy.handlers.click();
@@ -183,7 +183,7 @@ test('Clipboard-API kopiert den gewählten Reiter und meldet Berechtigungsfehler
   const app = setup();
   const heading = app.panel.children[0];
   const compiler = heading.children.find((child) => child.id === 'technical-log-tabs').children[1];
-  const copy = heading.children.find((child) => child.textContent === 'Kopieren');
+  const copy = heading.children.find((child) => child.id === 'technical-log-actions').children.find((child) => child.attributes['aria-label'] === 'Aktuelles Protokoll kopieren');
   const message = heading.children.find((child) => child.id === 'technical-log-message');
   const copied = [];
   app.window.isSecureContext = true;
