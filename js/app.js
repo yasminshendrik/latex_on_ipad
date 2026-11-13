@@ -1822,11 +1822,12 @@
   }
 
   function applyChangeMarkers() {
-    for (const { element, path, label } of changeMarkerTargets) {
+    for (const { element, path, label, text } of changeMarkerTargets) {
       const state = changeMarkers.get(path);
       if (state) element.setAttribute('data-change', state);
       else element.removeAttribute('data-change');
       element.setAttribute('aria-label', state ? `${label} – ${state === 'new' ? 'neu' : 'geändert'}` : label);
+      element.textContent = state === 'modified' ? `* ${text}` : text;
     }
   }
 
@@ -2134,7 +2135,7 @@
     projectButton.className = 'folder-toggle';
     projectButton.setAttribute('data-icon', 'folder-blank');
     projectButton.textContent = repoName || 'Lokales Projekt';
-    changeMarkerTargets = [{ element: projectButton, path: '', label: projectButton.textContent }];
+    changeMarkerTargets = [{ element: projectButton, path: '', label: projectButton.textContent, text: projectButton.textContent }];
     const projectChildren = document.createElement('ul');
     projectChildren.hidden = collapsedFolders.has('');
     projectButton.setAttribute('aria-expanded', String(!projectChildren.hidden));
@@ -2186,7 +2187,7 @@
         label.className = 'folder-toggle';
         label.setAttribute('data-icon', 'folder-blank');
         label.textContent = name;
-        changeMarkerTargets.push({ element: label, path: item.path, label: `Ordner: ${name}` });
+        changeMarkerTargets.push({ element: label, path: item.path, label: `Ordner: ${name}`, text: name });
         const children = document.createElement('ul');
         children.hidden = collapsedFolders.has(item.path);
         label.setAttribute('aria-expanded', String(!children.hidden));
@@ -2212,8 +2213,9 @@
         if (editable) {
           label.type = 'button';
           label.className = 'file-select-button';
+          label.setAttribute('data-icon', 'source-code');
           label.setAttribute('aria-label', `LaTeX-Datei bearbeiten: ${name}`);
-          changeMarkerTargets.push({ element: label, path: item.path, label: `LaTeX-Datei bearbeiten: ${name}` });
+          changeMarkerTargets.push({ element: label, path: item.path, label: `LaTeX-Datei bearbeiten: ${name}`, text: name });
           label.addEventListener('click', async (event) => {
             if (consumeLongPressClick(event)) return;
             if (fileLoadRequest) fileLoadRequest.abort();
@@ -2292,9 +2294,11 @@
     fileContextMenu.hidden = false;
     const menuRect = fileContextMenu.getBoundingClientRect();
     const left = Math.max(8, Math.min(point.x - menuRect.width / 2, window.innerWidth - menuRect.width - 8));
-    const aboveTop = point.y - menuRect.height - 8;
-    const belowTop = Math.min(point.y + 8, Math.max(8, window.innerHeight - menuRect.height - 8));
-    const top = aboveTop >= 8 ? aboveTop : belowTop;
+    const anchorRect = label.getBoundingClientRect();
+    const aboveTop = anchorRect.top - menuRect.height - 8;
+    const belowTop = anchorRect.bottom + 8;
+    const belowFits = belowTop + menuRect.height <= window.innerHeight - 8;
+    const top = aboveTop >= 8 ? aboveTop : belowFits ? belowTop : Math.max(8, window.innerHeight - menuRect.height - 8);
     fileContextMenu.style.left = `${left}px`;
     fileContextMenu.style.top = `${top}px`;
     fileContextDelete.focus({ preventScroll: true });

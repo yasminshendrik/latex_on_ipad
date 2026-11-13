@@ -167,6 +167,10 @@ function deleteRow(app, row) {
   return app.elements['file-context-delete'].handlers.click();
 }
 
+function rowName(row) {
+  return row.children[0].textContent.replace(/^\*\s*/, '');
+}
+
 function syncApiFetch({ baseSha = 'a'.repeat(40), refSha = baseSha, treeItems, mainContent = 'Remote-Hauptdatei', settingsContent, writeStatus = 201 } = {}) {
   let blobNumber = 0;
   const tree = treeItems || [{ type: 'blob', path: 'main.tex', sha: 'main-blob-sha', size: mainContent.length, mode: '100644' }];
@@ -1433,7 +1437,7 @@ test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen'
   assert.equal(app.elements['toggle-preview'].hidden, false);
   assert.equal(app.elements['branch-selector'].hidden, true);
   const projectRoot = app.elements['file-list'].children[0].children[0];
-  const chapters = projectRoot.children[1].children.find((row) => row.children[0].textContent === 'chapters');
+  const chapters = projectRoot.children[1].children.find((row) => rowName(row) === 'chapters');
   chapters.children[2].handlers.click();
   assert.equal(app.elements['new-tex-file-dialog'].open, true);
   assert.equal(app.elements['new-tex-file-folder'].value, 'chapters');
@@ -1484,7 +1488,7 @@ test('Ordner lassen sich über ihr Plus verschachtelt und dauerhaft offline anle
   await new Promise((resolve) => setImmediate(resolve));
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
   const projectRow = () => app.elements['file-list'].children[0].children[0];
-  const folder = (parent, name) => parent.children[1].children.find((row) => row.children[0].textContent === name);
+  const folder = (parent, name) => parent.children[1].children.find((row) => rowName(row) === name);
   projectRow().children[2].handlers.click();
   assert.equal(app.elements['new-tex-file-kind'].value, 'file');
   app.elements['new-tex-file-kind'].value = 'folder';
@@ -1535,9 +1539,9 @@ test('Vor dem Anlegen einer Datei wird die bisherige Editoränderung gespeichert
   assert.equal(app.localValues.get('latex_ipad_document:local:main:main.tex'), 'Ungesicherte Änderung');
   assert.equal(app.localValues.get('latex_ipad_document:local:main:neu.tex'), '');
   const root = app.elements['file-list'].children[0].children[0].children[1];
-  await root.children.find((row) => row.children[0].textContent === 'main.tex').children[0].handlers.click();
+  await root.children.find((row) => rowName(row) === 'main.tex').children[0].handlers.click();
   assert.equal(app.elements.editor.value, 'Ungesicherte Änderung');
-  await root.children.find((row) => row.children[0].textContent === 'neu.tex').children[0].handlers.click();
+  await root.children.find((row) => rowName(row) === 'neu.tex').children[0].handlers.click();
   assert.equal(app.elements.editor.value, '');
 });
 
@@ -1563,7 +1567,7 @@ test('Speichern und Dateimarkierung folgen dem tatsächlichen Editorstand', asyn
   await openSyncRepository(app);
   await new Promise((resolve) => setImmediate(resolve));
   const file = app.elements['file-list'].children[0].children[0].children[1].children.find(
-    (row) => row.children[0].textContent === 'main.tex'
+    (row) => rowName(row) === 'main.tex'
   ).children[0];
   assert.equal(app.elements['save-btn'].disabled, true);
   app.elements.editor.value = 'Geändert';
@@ -1571,12 +1575,36 @@ test('Speichern und Dateimarkierung folgen dem tatsächlichen Editorstand', asyn
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(app.elements['save-btn'].disabled, false);
   assert.equal(file.getAttribute('data-change'), 'modified');
+  assert.equal(file.textContent, '* main.tex');
+  assert.equal(file.getAttribute('data-icon'), 'source-code');
   assert.match(file.getAttribute('aria-label'), /geändert/);
   app.elements.editor.value = 'Remote-Hauptdatei';
   app.elements.editor.handlers.input();
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(app.elements['save-btn'].disabled, true);
   assert.equal(file.getAttribute('data-change'), null);
+  assert.equal(file.textContent, 'main.tex');
+});
+
+test('Geänderte TeX-Dateien und übergeordnete Ordner erhalten einen Stern hinter ihrem Icon', async () => {
+  const project = { id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex', paths: ['main.tex', 'Kapitel/kapitel.tex'] };
+  const app = setup({ localInitial: {
+    latex_ipad_projects: JSON.stringify([project]),
+    'latex_ipad_document:local:main:main.tex': 'Hauptdatei',
+    'latex_ipad_document:local:main:Kapitel/kapitel.tex': 'Kapitel'
+  } });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  const projectRow = () => app.elements['file-list'].children[0].children[0];
+  const folder = projectRow().children[1].children.find((row) => rowName(row) === 'Kapitel');
+  const file = folder.children[1].children.find((row) => rowName(row) === 'kapitel.tex').children[0];
+  assert.equal(file.getAttribute('data-icon'), 'source-code');
+  await file.handlers.click();
+  app.elements.editor.value = 'Geändertes Kapitel';
+  app.elements.editor.handlers.input();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(file.textContent, '* kapitel.tex');
+  assert.equal(folder.children[0].textContent, '* Kapitel');
 });
 
 test('Neue Ordner und Dateien bleiben nach lokalem Wiederöffnen markiert', async () => {
@@ -1588,7 +1616,7 @@ test('Neue Ordner und Dateien bleiben nach lokalem Wiederöffnen markiert', asyn
   await new Promise((resolve) => setImmediate(resolve));
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
   const projectRow = () => app.elements['file-list'].children[0].children[0];
-  const folder = () => projectRow().children[1].children.find((row) => row.children[0].textContent === 'Kapitel');
+  const folder = () => projectRow().children[1].children.find((row) => rowName(row) === 'Kapitel');
   projectRow().children[2].handlers.click();
   app.elements['new-tex-file-kind'].value = 'folder';
   app.elements['new-tex-file-name'].value = 'Kapitel';
@@ -1600,7 +1628,7 @@ test('Neue Ordner und Dateien bleiben nach lokalem Wiederöffnen markiert', asyn
   await app.elements['local-project-list'].children[0].children[1].handlers.click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(folder().children[0].getAttribute('data-change'), 'new');
-  const file = folder().children[1].children.find((row) => row.children[0].textContent === 'neu.tex').children[0];
+  const file = folder().children[1].children.find((row) => rowName(row) === 'neu.tex').children[0];
   assert.equal(file.getAttribute('data-change'), 'new');
   assert.match(file.getAttribute('aria-label'), /neu/);
 });
@@ -1624,7 +1652,7 @@ test('Gelöschte aktive Datei bleibt offline im Papierkorb und kann vollständig
   app.elements.editor.value = 'Lokale Änderung';
   app.elements.editor.handlers.input();
   const projectRow = () => app.elements['file-list'].children[0].children[0];
-  const file = projectRow().children[1].children.find((row) => row.children[0].textContent === 'main.tex');
+  const file = projectRow().children[1].children.find((row) => rowName(row) === 'main.tex');
   await deleteRow(app, file);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.elements['trash-list'].children[0].children[0].textContent, 'main.tex');
@@ -1647,6 +1675,7 @@ test('Langes Tippen öffnet das Löschmenü ohne Dateiwechsel; Scrollen bricht e
   await openSyncRepository(app);
   const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
   const label = row.children[0];
+  label.getBoundingClientRect = () => ({ left: 80, top: 160, bottom: 196, width: 200, height: 36 });
   const event = { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 120, preventDefault() {}, stopPropagation() {} };
   assert.equal(row.children.length, 1);
   label.handlers.pointerdown(event);
@@ -1656,7 +1685,7 @@ test('Langes Tippen öffnet das Löschmenü ohne Dateiwechsel; Scrollen bricht e
   label.handlers.pointerdown(event);
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(app.elements['file-context-menu'].hidden, false);
-  assert.equal(app.elements['file-context-menu'].style.top, '68px');
+  assert.equal(app.elements['file-context-menu'].style.top, '108px');
   assert.equal(app.elements['file-context-menu'].style.left, '15px');
   let releasePrevented = false;
   let releaseStopped = false;
@@ -1683,9 +1712,10 @@ test('Langes Tippen öffnet das Löschmenü ohne Dateiwechsel; Scrollen bricht e
   await app.elements['file-context-delete'].handlers.click();
   assert.equal(app.elements['file-context-menu'].hidden, true);
   const secondEvent = { ...event, pointerId: 2, clientY: 20 };
+  label.getBoundingClientRect = () => ({ left: 80, top: 20, bottom: 56, width: 200, height: 36 });
   label.handlers.pointerdown(secondEvent);
   await new Promise((resolve) => setTimeout(resolve, 600));
-  assert.equal(app.elements['file-context-menu'].style.top, '28px');
+  assert.equal(app.elements['file-context-menu'].style.top, '64px');
   label.handlers.pointerup(secondEvent);
   app.documentHandlers.keydown[0].handler({ key: 'Escape', preventDefault() {} });
   assert.equal(app.elements['file-context-menu'].hidden, true);
@@ -1751,7 +1781,7 @@ test('Eine einzelne Löschung kann ohne weitere Dateiänderungen übertragen wer
   const app = setup({ fetchImpl: syncApiFetch({ treeItems, settingsContent }) });
   await openSyncRepository(app);
   const rows = app.elements['file-list'].children[0].children[0].children[1].children;
-  await deleteRow(app, rows.find((row) => row.children[0].textContent === 'alt.tex'));
+  await deleteRow(app, rows.find((row) => rowName(row) === 'alt.tex'));
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(app.elements['save-btn'].disabled, false);
   await app.elements['save-btn'].handlers.click();
@@ -1896,7 +1926,7 @@ test('Auch nie übertragene Dateien bleiben bis zum nächsten Commit im Papierko
   project().children[2].handlers.click();
   app.elements['new-tex-file-name'].value = 'neu.tex';
   await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
-  const row = project().children[1].children.find((item) => item.children[0].textContent === 'neu.tex');
+  const row = project().children[1].children.find((item) => rowName(item) === 'neu.tex');
   await deleteRow(app, row);
   assert.ok(app.localValues.has('latex_ipad_document:alice/project:main:neu.tex'));
   app.elements.editor.value = 'Hauptdatei geändert';
@@ -1969,7 +1999,7 @@ test('Ordner mit Binärdatei bleibt im Papierkorb offline bytegenau wiederherste
   app.elements['tex-only-filter'].checked = false;
   app.elements['tex-only-filter'].handlers.change();
   const project = app.elements['file-list'].children[0].children[0];
-  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'bilder');
+  const folder = project.children[1].children.find((row) => rowName(row) === 'bilder');
   await deleteRow(app, folder);
   let records = await app.context.window.testSave.readProjectRecords({ repo: 'alice/project', branch: 'main' });
   assert.ok(!records.some((record) => record.path === 'bilder/grafik.png'));
@@ -2005,14 +2035,14 @@ test('Überlappende Löschungen im Papierkorb werden sicher abgewiesen', async (
   app.elements['tex-only-filter'].checked = false;
   app.elements['tex-only-filter'].handlers.change();
   const folder = () => app.elements['file-list'].children[0].children[0].children[1].children.find(
-    (row) => row.children[0].textContent === 'kapitel'
+    (row) => rowName(row) === 'kapitel'
   );
   await deleteRow(app, folder().children[1].children[0]);
   await deleteRow(app, folder());
   assert.match(app.footer.textContent, /untergeordneter Eintrag befindet sich bereits im Papierkorb/);
   assert.ok(folder());
   await app.elements['trash-list'].children[0].children[1].handlers.click();
-  assert.ok(folder().children[1].children.some((row) => row.children[0].textContent === 'a.tex'));
+  assert.ok(folder().children[1].children.some((row) => rowName(row) === 'a.tex'));
 });
 
 test('Ein gelöschter Ordner überträgt alle Remote-Dateien und Submodule als Löschungen', async () => {
@@ -2027,7 +2057,7 @@ test('Ein gelöschter Ordner überträgt alle Remote-Dateien und Submodule als L
   const app = setup({ fetchImpl: syncApiFetch({ treeItems }) });
   await openSyncRepository(app);
   const project = app.elements['file-list'].children[0].children[0];
-  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'kapitel');
+  const folder = project.children[1].children.find((row) => rowName(row) === 'kapitel');
   await deleteRow(app, folder);
   await app.elements['save-btn'].handlers.click();
   app.elements['commit-message'].value = 'Ordner entfernen';
@@ -2053,7 +2083,7 @@ test('Online-Neuladen bewahrt Löschungen und verweigert neue Remote-Dateien im 
   const app = setup({ exposeSave: true, fetchImpl: (url, options) => (changed ? newer : base)(url, options) });
   await openSyncRepository(app);
   const project = app.elements['file-list'].children[0].children[0];
-  const folder = project.children[1].children.find((row) => row.children[0].textContent === 'kapitel');
+  const folder = project.children[1].children.find((row) => rowName(row) === 'kapitel');
   await deleteRow(app, folder);
   const before = app.requests.filter((request) => request.url.includes('/contents/kapitel/a.tex')).length;
   await app.context.window.testSave.loadRepository('alice/project', 'main');
