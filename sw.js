@@ -7,6 +7,8 @@ const ASSETS = [
   './fonts/LICENSE-APACHE-2.0.txt',
   './icons/github-mark.svg',
   './icons/LICENSE-OCTICONS-MIT.txt',
+  './js/build-info.js',
+  './js/diagnostic.js',
   './js/app.js',
   './js/lint-worker.js',
   './js/tex-worker.js',
@@ -26,7 +28,8 @@ function isOAuthCallback(url) {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {
+    // 'reload' umgeht den HTTP-Cache, damit keine veraltete Version in den neuen Cache gelangt.
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS.map((asset) => new Request(asset, { cache: 'reload' })))).catch(() => {
       console.warn('Service Worker Cache konnte nicht initialisiert werden.');
     })
   );

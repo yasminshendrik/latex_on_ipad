@@ -15,12 +15,13 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
   const deletedCaches = [];
   const writes = [];
   const addedAssets = [];
+  const requestModes = [];
   const openedCaches = [];
   const networkRequests = [];
   const index = { name: 'index' };
   const network = { name: 'network', ok: true, clone() { return this; } };
   const cache = {
-    async addAll(assets) { addedAssets.push(...assets); },
+    async addAll(assets) { addedAssets.push(...assets.map((asset) => asset.url)); requestModes.push(...assets.map((asset) => asset.cache)); },
     async keys() { return [...cached.keys()].map((url) => ({ url })); },
     async delete(request) { return cached.delete(request.url); },
     async match(request) { return cached.get(request.url); },
@@ -44,13 +45,14 @@ function createWorker({ entries = {}, networkFails = false, missingIndex = false
   };
   vm.runInNewContext(source, {
     self, caches, URL, Promise, console,
+    Request: class { constructor(url, init) { this.url = url; this.cache = init && init.cache; } },
     fetch: async (request) => {
       networkRequests.push(request.url);
       if (networkFails) throw new Error('offline');
       return network;
     }
   });
-  return { handlers, cached, deletedCaches, writes, networkRequests, index, network, addedAssets, openedCaches };
+  return { handlers, cached, deletedCaches, writes, networkRequests, index, network, addedAssets, openedCaches, requestModes };
 }
 
 test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
@@ -58,6 +60,9 @@ test('Installation hält den LaTeX-Prüf-Worker offline vor', async () => {
   let installation;
   worker.handlers.install({ waitUntil(value) { installation = value; } });
   await installation;
+  assert.ok(worker.requestModes.length && worker.requestModes.every((mode) => mode === 'reload'));
+  assert.ok(worker.addedAssets.includes('./js/diagnostic.js'));
+  assert.ok(worker.addedAssets.includes('./js/build-info.js'));
   assert.ok(worker.addedAssets.includes('./js/lint-worker.js'));
   assert.ok(worker.addedAssets.includes('./js/tex-worker.js'));
   assert.ok(worker.addedAssets.includes('./js/engine/packs/packs-index.json'));
