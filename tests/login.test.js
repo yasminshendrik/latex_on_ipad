@@ -1476,10 +1476,11 @@ test('PDF-Vorschau lässt sich mit Touch-Zieher und Tastatur anpassen', async ()
 test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protokoll stehen in der Fußzeile', () => {
   const header = /<header>([\s\S]*?)<\/header>/.exec(html)[1];
   const footer = /<footer>([\s\S]*?)<\/footer>/.exec(html)[1];
-  assert.doesNotMatch(header, /gh-login-btn|toggle-log|open-repo-btn/);
+  assert.doesNotMatch(header, /toggle-log|open-repo-btn/);
   const centerGroup = /<div class="toolbar-group" id="toolbar-center">([\s\S]*?)<\/div>/.exec(header)[1];
   assert.ok(centerGroup.indexOf('id="open-dashboard"') < centerGroup.indexOf('id="save-btn"'));
   assert.match(centerGroup, /id="project-settings-button"/);
+  assert.ok(centerGroup.indexOf('id="gh-login-btn"') > centerGroup.indexOf('id="project-settings-button"'));
   assert.match(html, /#toolbar-center \{ justify-self: center; \}/);
   assert.match(html, /#toolbar-right \{ justify-self: end; \}/);
   assert.match(header, /id="toggle-sidebar"[^>]*hidden/);
@@ -1493,9 +1494,10 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(header, /id="toggle-preview"[^>]*data-icon="course-book"[^>]*aria-label="Leseansicht umschalten"/);
   assert.match(html, /id="dashboard-open-repo" type="button">GitHub-Repository öffnen<\/button>/);
   assert.match(html, /id="dashboard-create-repo" type="button">Neues GitHub-Repository<\/button>/);
-  assert.match(footer, /id="gh-login-btn"[^>]*data-icon="github"/);
+  assert.match(centerGroup, /id="gh-login-btn"[^>]*data-icon="github"/);
+  assert.doesNotMatch(footer, /gh-login-btn/);
   assert.match(footer, /id="toggle-log"[^>]*data-icon/);
-  assert.ok(footer.indexOf('id="toggle-log"') < footer.indexOf('id="footer-actions"'));
+  assert.ok(footer.indexOf('id="toggle-log"') < footer.indexOf('id="app-status"'));
   assert.match(html, /button\[data-icon="log"\]::before \{ content: "\\e1b4"/);
   assert.doesNotMatch(html, /id="repo-label"/);
   assert.match(html, /id="dashboard-open-repo"/);

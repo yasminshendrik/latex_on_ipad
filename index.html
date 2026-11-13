@@ -124,7 +124,7 @@
     #log-panel[hidden] { display: none; }
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
     footer { flex: 0 0 auto; min-height: 46px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
-    #footer-actions { display: flex; gap: 6px; }
+    #gh-login-btn { margin-left: 16px; }
     #app-status { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
     @media (orientation: portrait) {
       header { justify-content: initial; }
@@ -206,6 +206,7 @@
       <button id="open-dashboard" type="button" hidden data-icon="home" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
       <button id="save-btn" type="button" hidden data-icon="save" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
       <button id="project-settings-button" type="button" hidden data-icon="settings" aria-label="Projekteinstellungen öffnen" title="Projekteinstellungen">Projekteinstellungen</button>
+      <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
     </div>
     <div class="toolbar-group" id="toolbar-right">
       <button id="toggle-preview" type="button" hidden data-icon="course-book" aria-label="Leseansicht umschalten" title="Leseansicht umschalten">Leseansicht</button>
@@ -350,9 +351,6 @@
   </dialog>
   <footer>
     <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
-    <div id="footer-actions">
-      <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
-    </div>
     <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>
   </footer>
   <script src="js/build-info.js"></script>
