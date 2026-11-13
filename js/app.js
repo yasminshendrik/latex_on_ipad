@@ -141,9 +141,13 @@
   let currentPdf;
   let currentPdfContext = '';
   let pdfRenderId = 0;
+  let pdfSession;
   let pdfResizeTimer;
   let previewSize = 40;
   let pdfjsPromise;
+  const MAX_RENDERED_PDF_PAGES = 3;
+  const MAX_PDF_CANVAS_PIXELS = 2_000_000;
+  const MAX_PDF_PIXEL_RATIO = 1.5;
   const pendingCompiles = new Map();
   const compiledSignatures = new Map();
 
@@ -938,39 +942,181 @@
     return pdfjsPromise;
   }
 
-  async function renderPdf(bytes) {
-    const renderId = ++pdfRenderId;
-    try {
-      const library = await loadPdfjs();
-      const loadingTask = library.getDocument({ data: bytes.slice(), isEvalSupported: false });
-      const document_ = await loadingTask.promise;
-      try {
-        const width = Math.max(200, (pdfPages.clientWidth || 600) - 4);
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        const canvases = [];
-        for (let number = 1; number <= document_.numPages; number += 1) {
-          const page = await document_.getPage(number);
-          if (renderId !== pdfRenderId) return;
-          const scale = width / page.getViewport({ scale: 1 }).width;
-          const viewport = page.getViewport({ scale: scale * ratio });
+  function releasePdfPage(slot) {
+    slot.renderTask?.cancel?.();
+    slot.renderTask = undefined;
+    if (slot.canvas) {
+      slot.canvas.width = 0;
+      slot.canvas.height = 0;
+      slot.canvas = undefined;
+    }
+    slot.element.replaceChildren();
+  }
+
+  async function discardPdfSession(session) {
+    if (!session) return;
+    session.observer?.disconnect();
+    if (session.scrollListener) previewContainer.removeEventListener?.('scroll', session.scrollListener);
+    for (const slot of session.slots) releasePdfPage(slot);
+    await session.loadingTask.destroy();
+  }
+
+  function updateFallbackPdfPages(session) {
+    const root = previewContainer.getBoundingClientRect();
+    const margin = root.height;
+    for (const slot of session.slots) {
+      const bounds = slot.element.getBoundingClientRect();
+      if (bounds.top <= root.bottom + margin && bounds.bottom >= root.top - margin) {
+        session.visiblePages.add(slot);
+      } else {
+        session.visiblePages.delete(slot);
+      }
+    }
+    updateRenderedPdfPages(session);
+  }
+
+  function updateRenderedPdfPages(session) {
+    if (pdfSession !== session) return;
+    const root = previewContainer.getBoundingClientRect();
+    const visible = [...session.visiblePages]
+      .sort((left, right) => {
+        const leftBounds = left.element.getBoundingClientRect();
+        const rightBounds = right.element.getBoundingClientRect();
+        const rootCenter = (root.top + root.bottom) / 2;
+        const leftCenter = (leftBounds.top + leftBounds.bottom) / 2;
+        const rightCenter = (rightBounds.top + rightBounds.bottom) / 2;
+        return Math.abs(leftCenter - rootCenter) - Math.abs(rightCenter - rootCenter);
+      });
+    const retained = new Set(visible.slice(0, MAX_RENDERED_PDF_PAGES));
+    for (const slot of session.slots) {
+      if (!retained.has(slot)) releasePdfPage(slot);
+    }
+    for (const slot of retained) {
+      if (slot.canvas || slot.rendering) continue;
+      slot.rendering = (async () => {
+        let page;
+        let failed = false;
+        try {
+          page = await session.document.getPage(slot.number);
+          if (pdfSession !== session || !session.visiblePages.has(slot)) return;
+          const scale = slot.width / slot.pageWidth;
+          const pixelRatio = Math.min(
+            window.devicePixelRatio || 1,
+            MAX_PDF_PIXEL_RATIO,
+            Math.sqrt(MAX_PDF_CANVAS_PIXELS / (slot.width * slot.height))
+          );
+          const viewport = page.getViewport({ scale: scale * pixelRatio });
           const canvas = document.createElement('canvas');
           canvas.width = Math.floor(viewport.width);
           canvas.height = Math.floor(viewport.height);
-          canvas.style.width = `${width}px`;
-          canvas.setAttribute('aria-label', `Seite ${number}`);
-          await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
-          canvases.push(canvas);
+          canvas.setAttribute('aria-label', `Seite ${slot.number}`);
+          const task = page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport });
+          slot.renderTask = task;
+          await task.promise;
+          if (pdfSession === session && session.visiblePages.has(slot)) {
+            slot.canvas = canvas;
+            slot.element.replaceChildren(canvas);
+          } else {
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+        } catch (error) {
+          failed = error?.name !== 'RenderingCancelledException';
+          if (pdfSession === session && session.visiblePages.has(slot) && failed) {
+            previewStatus.textContent = `PDF konnte nicht dargestellt werden: ${error.message}`;
+          }
+        } finally {
+          slot.renderTask = undefined;
+          page?.cleanup?.();
+          slot.rendering = undefined;
+          if (!failed && pdfSession === session && session.visiblePages.has(slot) && !slot.canvas) {
+            Promise.resolve().then(() => updateRenderedPdfPages(session));
+          }
         }
-        if (renderId !== pdfRenderId) return;
-        const previousScroll = document.getElementById('preview-container').scrollTop;
-        pdfPages.replaceChildren(...canvases);
-        document.getElementById('preview-container').scrollTop = previousScroll;
-      } finally {
-        loadingTask.destroy();
+      })();
+    }
+  }
+
+  async function renderPdf(bytes) {
+    const renderId = ++pdfRenderId;
+    try {
+      const previousSession = pdfSession;
+      pdfSession = undefined;
+      await discardPdfSession(previousSession);
+      if (renderId !== pdfRenderId) return;
+      const library = await loadPdfjs();
+      if (renderId !== pdfRenderId) return;
+      const loadingTask = library.getDocument({ data: bytes.slice(), isEvalSupported: false });
+      const session = {
+        loadingTask,
+        document: undefined,
+        observer: undefined,
+        slots: [],
+        visiblePages: new Set()
+      };
+      pdfSession = session;
+      session.document = await loadingTask.promise;
+      if (renderId !== pdfRenderId || pdfSession !== session) return;
+      const width = Math.max(200, (pdfPages.clientWidth || 600) - 4);
+      for (let number = 1; number <= session.document.numPages; number += 1) {
+        const page = await session.document.getPage(number);
+        if (renderId !== pdfRenderId || pdfSession !== session) {
+          page.cleanup?.();
+          return;
+        }
+        const viewport = page.getViewport({ scale: 1 });
+        const element = document.createElement('div');
+        element.className = 'pdf-page';
+        element.style.width = `${width}px`;
+        element.style.height = `${width * viewport.height / viewport.width}px`;
+        element.setAttribute('aria-label', `Seite ${number}`);
+        session.slots.push({
+          number,
+          element,
+          width,
+          height: width * viewport.height / viewport.width,
+          pageWidth: viewport.width
+        });
+        page.cleanup?.();
+      }
+      if (renderId !== pdfRenderId || pdfSession !== session) return;
+      const previousScroll = previewContainer.scrollTop;
+      pdfPages.replaceChildren(...session.slots.map((slot) => slot.element));
+      previewContainer.scrollTop = previousScroll;
+      if (typeof IntersectionObserver === 'function') {
+        session.observer = new IntersectionObserver((entries) => {
+          for (const entry of entries) {
+            const slot = session.slots.find((item) => item.element === entry.target);
+            if (!slot) continue;
+            if (entry.isIntersecting) session.visiblePages.add(slot);
+            else session.visiblePages.delete(slot);
+          }
+          updateRenderedPdfPages(session);
+        }, { root: previewContainer, rootMargin: '100% 0px' });
+        for (const slot of session.slots) session.observer.observe(slot.element);
+      } else {
+        session.scrollListener = () => updateFallbackPdfPages(session);
+        previewContainer.addEventListener('scroll', session.scrollListener, { passive: true });
+        updateFallbackPdfPages(session);
       }
     } catch (error) {
-      if (renderId === pdfRenderId) previewStatus.textContent = `PDF konnte nicht dargestellt werden: ${error.message}`;
+      if (renderId === pdfRenderId) {
+        const session = pdfSession;
+        pdfSession = undefined;
+        await discardPdfSession(session);
+        previewStatus.textContent = `PDF konnte nicht dargestellt werden: ${error.message}`;
+      }
     }
+  }
+
+  function clearPdfPreview() {
+    pdfRenderId += 1;
+    const session = pdfSession;
+    pdfSession = undefined;
+    pdfPages.replaceChildren();
+    discardPdfSession(session).catch((error) => {
+      previewStatus.textContent = `PDF-Speicher konnte nicht freigegeben werden: ${error.message}`;
+    });
   }
 
   function previewVisible() {
@@ -1294,7 +1440,10 @@
   document.getElementById('toggle-preview').addEventListener('click', () => {
     previewContainer.classList.toggle('visible');
     updatePreviewResizer();
-    if (!previewContainer.classList.contains('visible')) return;
+    if (!previewContainer.classList.contains('visible')) {
+      clearPdfPreview();
+      return;
+    }
     const context = projectContext();
     requestCompile('preview', context);
   });

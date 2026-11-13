@@ -93,7 +93,8 @@
     #compile-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 12px; border-top: 1px solid #444; background: #252526; color: #ddd; font-size: 12px; }
     #preview-container { display: none; flex: 0 0 var(--preview-size, 40%); min-width: 0; overflow: auto; padding: 16px; color: #222; background: #fff; }
     #preview-status { margin: 4px 0 12px; color: #444; font-size: 13px; }
-    #pdf-pages canvas { display: block; margin: 0 auto 12px; border: 1px solid #ccc; background: #fff; }
+    .pdf-page { box-sizing: border-box; margin: 0 auto 12px; border: 1px solid #ccc; background: #fff; }
+    #pdf-pages canvas { display: block; width: 100%; height: 100%; background: #fff; }
     #preview-container.visible { display: block; }
     #preview-resize { flex: 0 0 16px; display: flex; align-items: center; justify-content: center; cursor: col-resize; touch-action: none; background: #2d2d2d; }
     #preview-resize[hidden] { display: none; }

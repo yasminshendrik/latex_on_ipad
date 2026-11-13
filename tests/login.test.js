@@ -58,7 +58,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
       setAttribute(name, value) { this.attributes[name] = value; },
       setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
       getAttribute(name) { return this.attributes[name] ?? null; },
-      getBoundingClientRect() { return { width: 800, height: 600 }; },
+      getBoundingClientRect() { return { width: 800, height: 600, top: 0, bottom: 600, left: 0, right: 800 }; },
       setPointerCapture() {},
       removeAttribute(name) { delete this.attributes[name]; }
     };
@@ -1132,36 +1132,42 @@ test('TeX-Pakete werden bei beschädigter oder nicht verifizierbarer Antwort nic
   assert.equal((await app.app.context.window.testSave.readProjectTexPacks({ repo: 'local', branch: 'main' })).length, 0);
 });
 
-test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Bereich ein', async () => {
+test('PDF-Vorschau rendert sichtbare Seiten und gibt Canvas-Speicher außerhalb des Ansichtsbereichs frei', async () => {
   const rendered = [];
-  let destroyed = false;
+  let created = 0;
+  let destroyed = 0;
+  let firstCanvas;
   const pdfjs = {
     GlobalWorkerOptions: {},
     getDocument(options) {
       assert.equal(options.isEvalSupported, false);
       assert.deepEqual([...options.data], [37, 80]);
+      created += 1;
       return {
         promise: Promise.resolve({
-          numPages: 2,
+          numPages: 5,
           async getPage(number) {
             return {
               getViewport({ scale }) {
-                return { width: 300 * scale, height: 400 * scale };
+                return { width: 300 * scale, height: (number === 3 ? 5000 : 400) * scale };
               },
               render({ canvas, canvasContext, viewport }) {
                 rendered.push({ number, canvas, canvasContext, viewport });
+                if (!firstCanvas) firstCanvas = canvas;
                 return { promise: Promise.resolve() };
-              }
+              },
+              cleanup() {}
             };
           }
         }),
-        destroy() { destroyed = true; }
+        destroy() { destroyed += 1; }
       };
     }
   };
   const { app, tex, tick } = await texWorkerSetup({
     'latex_ipad_document:local:main:main.tex': '\\documentclass{article}'
   }, pdfjs);
+  app.context.window.devicePixelRatio = 2;
 
   await app.elements['toggle-preview'].handlers.click();
   assert.equal(app.elements['preview-container'].classList.contains('visible'), true);
@@ -1173,14 +1179,36 @@ test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Berei
   await tick();
   await tick();
 
-  assert.equal(rendered.length, 2);
-  assert.deepEqual(rendered.map((page) => page.number), [1, 2]);
+  assert.equal(rendered.length, 3);
+  assert.deepEqual(rendered.map((page) => page.number), [1, 2, 3]);
+  assert.equal(app.elements['pdf-pages'].children.length, 5);
+  assert.equal(app.elements['pdf-pages'].children.filter((page) => page.children.length === 1).length, 3);
   assert.ok(rendered.every((page) => page.canvasContext));
-  assert.deepEqual(app.elements['pdf-pages'].children.map((canvas) => canvas.attributes['aria-label']), ['Seite 1', 'Seite 2']);
+  assert.deepEqual(app.elements['pdf-pages'].children.map((page) => page.attributes['aria-label']), [
+    'Seite 1', 'Seite 2', 'Seite 3', 'Seite 4', 'Seite 5'
+  ]);
   assert.equal(app.elements['pdf-pages'].children[0].style.width, '596px');
+  assert.equal(rendered[0].viewport.width, 894);
+  assert.ok(rendered[2].canvas.width * rendered[2].canvas.height <= 2_000_000);
   assert.match(pdfjs.GlobalWorkerOptions.workerSrc, /pdf\.worker\.min\.mjs$/);
-  assert.equal(destroyed, true);
+  assert.equal(created, 1);
+  assert.equal(destroyed, 0);
   assert.match(app.elements['preview-status'].textContent, /Vorschau von main\.tex/);
+
+  app.elements['pdf-pages'].children.slice(0, 3).forEach((page) => {
+    page.getBoundingClientRect = () => ({ top: -2000, bottom: -1000, width: 596, height: 795 });
+  });
+  app.elements['pdf-pages'].children.slice(3).forEach((page) => {
+    page.getBoundingClientRect = () => ({ top: 0, bottom: 795, width: 596, height: 795 });
+  });
+  app.elements['preview-container'].handlers.scroll();
+  await tick();
+  await tick();
+  assert.equal(rendered.length, 5);
+  assert.deepEqual(rendered.slice(3).map((page) => page.number), [4, 5]);
+  assert.equal(app.elements['pdf-pages'].children.filter((page) => page.children.length === 1).length, 2);
+  assert.equal(firstCanvas.width, 0);
+
   app.elements['preview-resize'].handlers.pointerdown({
     button: 0, pointerId: 9, clientX: 600, clientY: 0,
     preventDefault() {}
@@ -1188,7 +1216,14 @@ test('PDF-Vorschau rendert jede erzeugte Seite und blendet den responsiven Berei
   app.elements['preview-resize'].handlers.pointermove({ pointerId: 9, clientX: 520, clientY: 0 });
   await new Promise((resolve) => setTimeout(resolve, 120));
   await tick();
-  assert.equal(rendered.length, 4);
+  await tick();
+  assert.equal(rendered.length, 8);
+  assert.equal(created, 2);
+  assert.equal(destroyed, 1);
+  await app.elements['toggle-preview'].handlers.click();
+  await tick();
+  assert.equal(destroyed, 2);
+  assert.equal(app.elements['pdf-pages'].children.length, 0);
 });
 
 test('Binäre Remote-Dateien bleiben byteweise erhalten, Text wird weiterhin dekodiert', async () => {
