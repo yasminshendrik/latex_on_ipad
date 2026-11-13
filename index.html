@@ -78,7 +78,8 @@
     .file-item > .folder-toggle, .file-item > .file-select-button, .file-item > .file-readonly { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
     #file-context-menu { position: fixed; z-index: 20; padding: 4px; border: 1px solid var(--fiori-border); border-radius: 5px; background: var(--fiori-surface); box-shadow: 0 3px 12px #0003; }
     #file-context-menu[hidden] { display: none; }
-    #file-context-menu button { min-width: 150px; background: transparent; color: var(--fiori-text); text-align: left; }
+    #file-context-menu button[data-icon] { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 150px; color: var(--fiori-text); font-size: 14px; text-align: left; }
+    #file-context-menu button[data-icon]::before { flex: 0 0 auto; color: var(--fiori-text); font-size: 18px; }
     #file-context-menu button:focus, #file-context-menu button:hover { background: var(--fiori-selected); }
     #trash { border-top: 1px solid var(--fiori-border); padding: 8px 20px 8px 8px; max-height: 30%; overflow: auto; }
     #trash h3 { margin: 0 0 4px; font-size: 13px; }
@@ -249,7 +250,7 @@
       <div id="sidebar-resize" role="separator" aria-label="Sidebar-Größe ändern" aria-controls="sidebar" aria-orientation="vertical" tabindex="0"></div>
     </aside>
     <div id="file-context-menu" role="menu" aria-label="Datei- und Ordneraktionen" hidden>
-      <button id="file-context-delete" type="button" role="menuitem">Löschen</button>
+      <button id="file-context-delete" type="button" data-icon="delete" role="menuitem" aria-label="Element löschen">Löschen</button>
     </div>
     <section id="editor-container">
       <div id="editor-surface">

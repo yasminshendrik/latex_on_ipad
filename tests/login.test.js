@@ -27,6 +27,7 @@ const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'dashboa
 function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco, pdfjs, withIndexedDB = false, indexedDBInstance, confirmImpl, exposeSave = false, locationHref = 'https://example.test/app/' } = {}) {
   const values = new Map(Object.entries(initial));
   const requests = [];
+  const documentHandlers = {};
   const indexedDB = indexedDBInstance || (withIndexedDB ? new IDBFactory() : undefined);
   const storage = {
     getItem: (key) => values.get(key) ?? null,
@@ -67,6 +68,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
     };
   }
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
+  elements['file-context-menu'].appendChild(elements['file-context-delete']);
+  elements['file-context-menu'].getBoundingClientRect = () => ({ width: 170, height: 44, top: 0, bottom: 44, left: 0, right: 170 });
   elements.dashboard.hidden = false;
   elements['gh-login-btn'].parentNode = element();
   elements['tex-only-filter'].checked = true;
@@ -110,7 +113,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
     window, document: {
       title: 'test',
       head: { appendChild(script) { if (monaco) script.onload(); } },
-      addEventListener() {},
+      addEventListener(type, handler, options) { (documentHandlers[type] ||= []).push({ handler, options }); },
       getElementById: (id) => elements[id],
       querySelector: () => footer,
       createElement: (tagName) => element(tagName.toUpperCase())
@@ -147,7 +150,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   initialize();`)
     : pdfTestSource;
   vm.runInNewContext(testSource, context);
-  return { elements, values, localValues, requests, footer, context, intervals, logs, get replacement() { return replacement; } };
+  return { elements, values, localValues, requests, footer, context, intervals, logs, documentHandlers, get replacement() { return replacement; } };
 }
 
 function response(data, { status = 200, link = '' } = {}) {
@@ -1644,7 +1647,7 @@ test('Langes Tippen öffnet das Löschmenü ohne Dateiwechsel; Scrollen bricht e
   await openSyncRepository(app);
   const row = app.elements['file-list'].children[0].children[0].children[1].children[0];
   const label = row.children[0];
-  const event = { pointerType: 'touch', pointerId: 1, clientX: 20, clientY: 20, preventDefault() {}, stopPropagation() {} };
+  const event = { pointerType: 'touch', pointerId: 1, clientX: 100, clientY: 120, preventDefault() {}, stopPropagation() {} };
   assert.equal(row.children.length, 1);
   label.handlers.pointerdown(event);
   label.handlers.pointermove({ ...event, clientY: 40 });
@@ -1653,10 +1656,39 @@ test('Langes Tippen öffnet das Löschmenü ohne Dateiwechsel; Scrollen bricht e
   label.handlers.pointerdown(event);
   await new Promise((resolve) => setTimeout(resolve, 600));
   assert.equal(app.elements['file-context-menu'].hidden, false);
-  label.handlers.pointerup(event);
-  await label.handlers.click(event);
+  assert.equal(app.elements['file-context-menu'].style.top, '68px');
+  assert.equal(app.elements['file-context-menu'].style.left, '15px');
+  let releasePrevented = false;
+  let releaseStopped = false;
+  label.handlers.pointerup({
+    ...event,
+    preventDefault() { releasePrevented = true; },
+    stopPropagation() { releaseStopped = true; }
+  });
+  assert.equal(releasePrevented, true);
+  assert.equal(releaseStopped, true);
   assert.equal(app.elements['file-context-menu'].hidden, false);
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  let generatedClickPrevented = false;
+  let generatedClickStopped = false;
+  app.documentHandlers.click[0].handler({
+    detail: 1,
+    preventDefault() { generatedClickPrevented = true; },
+    stopImmediatePropagation() { generatedClickStopped = true; }
+  });
+  assert.equal(generatedClickPrevented, true);
+  assert.equal(generatedClickStopped, true);
+  assert.equal(app.localValues.has('latex_ipad_trash:alice/project:main'), false);
+  app.documentHandlers.pointerdown[0].handler({ target: app.elements['file-context-delete'] });
   await app.elements['file-context-delete'].handlers.click();
+  assert.equal(app.elements['file-context-menu'].hidden, true);
+  const secondEvent = { ...event, pointerId: 2, clientY: 20 };
+  label.handlers.pointerdown(secondEvent);
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  assert.equal(app.elements['file-context-menu'].style.top, '28px');
+  label.handlers.pointerup(secondEvent);
+  app.documentHandlers.keydown[0].handler({ key: 'Escape', preventDefault() {} });
+  assert.equal(app.elements['file-context-menu'].hidden, true);
   assert.equal(app.elements['trash-list'].children[0].children[0].textContent, 'main.tex');
 });
 
@@ -2101,6 +2133,8 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(html, /@font-face \{ font-family: "SAP-icons"/);
   assert.match(html, /button\[data-icon="save"\]::before \{ content: "\\e09a"/);
   assert.match(html, /button\[data-icon="github"\]::before/);
+  assert.match(html, /id="file-context-delete"[^>]*data-icon="delete"/);
+  assert.match(html, /#file-context-menu button\[data-icon\]::before/);
   assert.match(html, /mask: url\("\.\/icons\/github-mark\.svg"\)/);
 });
 

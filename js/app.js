@@ -2274,6 +2274,7 @@
   let contextItem;
   let contextAnchor;
   let longPressTimer;
+  let suppressReleaseClick = false;
   function cancelLongPress() {
     clearTimeout(longPressTimer);
     longPressTimer = undefined;
@@ -2283,63 +2284,76 @@
     contextItem = undefined;
     contextAnchor = undefined;
   }
+  function openFileContextMenu(label, item, point) {
+    contextItem = item;
+    contextAnchor = label;
+    fileContextDelete.setAttribute('aria-label', `${item.type === 'tree' ? 'Ordner' : 'Datei'} löschen: ${item.path}`);
+    fileContextMenu.style.left = `${Math.max(8, point.x)}px`;
+    fileContextMenu.hidden = false;
+    const menuRect = fileContextMenu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(point.x - menuRect.width / 2, window.innerWidth - menuRect.width - 8));
+    const aboveTop = point.y - menuRect.height - 8;
+    const belowTop = Math.min(point.y + 8, Math.max(8, window.innerHeight - menuRect.height - 8));
+    const top = aboveTop >= 8 ? aboveTop : belowTop;
+    fileContextMenu.style.left = `${left}px`;
+    fileContextMenu.style.top = `${top}px`;
+    fileContextDelete.focus({ preventScroll: true });
+  }
   function addItemContextMenu(label, item) {
-    let suppressClick = false;
     let start;
     label.setAttribute('aria-haspopup', 'menu');
     label.setAttribute('aria-keyshortcuts', 'Shift+F10');
     label.setAttribute('title', 'Für Aktionen gedrückt halten');
-    const open = () => {
+    const openAt = (x, y) => {
       cancelLongPress();
-      contextItem = item;
-      contextAnchor = label;
-      fileContextDelete.setAttribute('aria-label', `${item.type === 'tree' ? 'Ordner' : 'Datei'} löschen: ${item.path}`);
-      const rect = label.getBoundingClientRect();
-      fileContextMenu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 170))}px`;
-      fileContextMenu.style.top = `${Math.max(8, Math.min(rect.bottom, window.innerHeight - 55))}px`;
-      fileContextMenu.hidden = false;
-      fileContextDelete.focus({ preventScroll: true });
+      openFileContextMenu(label, item, { x, y });
     };
     label.addEventListener('pointerdown', (event) => {
-      suppressClick = false;
       cancelLongPress();
       if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
-      start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      start = { id: event.pointerId, x: event.clientX, y: event.clientY, pointerType: event.pointerType, longPress: false };
       longPressTimer = setTimeout(() => {
-        suppressClick = true;
-        open();
+        if (start?.id !== event.pointerId) return;
+        start.longPress = true;
+        suppressReleaseClick = true;
+        openAt(start.x, start.y);
       }, 550);
     });
     label.addEventListener('pointermove', (event) => {
-      if (start && event.pointerId === start.id && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancelLongPress();
+      if (start && event.pointerId === start.id && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) {
+        start.longPress = false;
+        cancelLongPress();
+      }
     });
-    const finish = (event) => {
+    label.addEventListener('pointerup', (event) => {
+      if (start && event.pointerId === start.id) {
+        const pressed = start;
+        cancelLongPress();
+        start = undefined;
+        if (!pressed.longPress) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setTimeout(() => { suppressReleaseClick = false; }, 1000);
+      }
+    });
+    label.addEventListener('pointercancel', (event) => {
       if (start && event.pointerId === start.id) {
         cancelLongPress();
         start = undefined;
       }
-    };
-    label.addEventListener('pointerup', finish);
-    label.addEventListener('pointercancel', finish);
+    });
     label.addEventListener('contextmenu', (event) => {
       event.preventDefault();
-      suppressClick = true;
-      open();
+      if (start?.pointerType === 'touch') return;
+      openAt(event.clientX || label.getBoundingClientRect().left, event.clientY || label.getBoundingClientRect().top);
     });
     label.addEventListener('keydown', (event) => {
-      suppressClick = false;
       if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
         event.preventDefault();
-        open();
+        openAt(label.getBoundingClientRect().left, label.getBoundingClientRect().top);
       }
     });
-    return (event) => {
-      if (!suppressClick) return false;
-      suppressClick = false;
-      event?.preventDefault();
-      event?.stopPropagation();
-      return true;
-    };
+    return () => false;
   }
   fileContextDelete.addEventListener('click', () => {
     const item = contextItem;
@@ -2351,8 +2365,15 @@
     });
   });
   document.addEventListener('pointerdown', (event) => {
+    suppressReleaseClick = false;
     if (!fileContextMenu.hidden && !fileContextMenu.contains(event.target)) closeFileContextMenu();
-  });
+  }, true);
+  document.addEventListener('click', (event) => {
+    if (!suppressReleaseClick || event.detail === 0) return;
+    suppressReleaseClick = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, true);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !fileContextMenu.hidden) {
       const anchor = contextAnchor;
