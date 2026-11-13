@@ -99,23 +99,24 @@
     if (panel || !document.body) return;
     const style = document.createElement('style');
     style.textContent = `
-      #technical-log { flex: 0 0 150px; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid #666; background: #151515; color: #d8d8d8; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      #technical-log { flex: 0 0 150px; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid var(--fiori-border, #d5dadd); background: var(--fiori-surface, #fff); color: var(--fiori-text, #1d2d3e); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
       #technical-log[hidden] { display: none; }
-      #technical-log-heading { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; color: #9cdcfe; background: #252526; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+      #technical-log-heading { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; color: var(--fiori-text, #1d2d3e); background: var(--fiori-background, #f5f6f7); border-bottom: 1px solid var(--fiori-border, #d5dadd); font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
       #technical-log-title { flex: 1 1 180px; }
-      #technical-log button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
+      #technical-log button { min-height: 30px; padding: 4px 9px; font-size: 12px; border: 1px solid var(--fiori-border, #d5dadd); border-radius: 0.5rem; background: var(--fiori-surface, #fff); color: var(--fiori-brand, #0070f2); }
+      #technical-log button:hover { background: var(--fiori-selected, #e5f0ff); }
       #technical-log button[data-log-icon]::before { display: inline-block; margin-right: 5px; font: 15px/1 "SAP-icons"; }
       #technical-log button[data-log-icon="delete"]::before { content: "\\e03d"; }
       #technical-log button[data-log-icon="copy"]::before { content: "\\e245"; }
       #technical-log-tabs { display: flex; gap: 4px; }
-      #technical-log-tabs [aria-selected="true"] { border-bottom: 2px solid #9cdcfe; }
-      #technical-log .technical-log-link { min-height: 0; padding: 0; border: 0; background: none; color: #9cdcfe; text-align: left; text-decoration: underline; font: inherit; }
-      #technical-log-message { flex: 0 1 auto; color: #b7e3ff; font-weight: normal; }
+      #technical-log-tabs [aria-selected="true"] { background: var(--fiori-selected, #e5f0ff); border-color: var(--fiori-brand, #0070f2); font-weight: 600; }
+      #technical-log .technical-log-link { min-height: 0; padding: 0; border: 0; background: none; color: var(--fiori-brand, #0070f2); text-align: left; text-decoration: underline; font: inherit; }
+      #technical-log-message { flex: 0 1 auto; color: var(--fiori-muted, #556b82); font-weight: normal; }
       #technical-log-entries, #compiler-log-entries { min-height: 0; overflow: auto; padding: 4px 10px; overflow-wrap: anywhere; }
       #compiler-log-entries { white-space: pre-wrap; }
       #technical-log-entries[hidden], #compiler-log-entries[hidden] { display: none; }
       .technical-log-entry { padding: 1px 0; }
-      .technical-log-empty { color: #9aa0a6; }
+      .technical-log-empty { color: var(--fiori-muted, #556b82); }
       @media (max-height: 600px) { #technical-log { flex-basis: 110px; min-height: 85px; } }
     `;
     document.head.appendChild(style);
