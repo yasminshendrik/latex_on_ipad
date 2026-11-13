@@ -64,6 +64,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
     };
   }
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
+  elements.dashboard.hidden = false;
   elements['tex-only-filter'].checked = true;
   elements['toggle-sidebar'].disabled = true;
   const dialog = elements['github-login-dialog'];
@@ -135,7 +136,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   );
   const testSource = exposeSave
     ? pdfTestSource.replace('  initialize();', `  window.testSave = {
-        persistCurrentFile, readRemoteFile, readProjectTexPacks,
+        persistCurrentFile, readRemoteFile, readProjectTexPacks, readProjectRecords,
         setContext(repo, branch, path) { repoName = repo; branchName = branch; activePath = path; }
       };
   initialize();`)
@@ -1294,6 +1295,86 @@ test('Startübersicht zeigt gespeicherte lokale Projekte und öffnet sie offline
   assert.doesNotMatch(app.logs.join('\n'), /Lokal gespeicherter Inhalt/);
 });
 
+test('Neuladen stellt Projekt, ausgewählte Datei und offene Vorschau offline wieder her', async () => {
+    const project = { id: 'alice/offline', repo: 'alice/offline', branch: 'dev', activePath: 'main.tex', paths: ['main.tex', 'chapter.tex'] };
+    const app = setup({ localInitial: {
+      latex_ipad_projects: JSON.stringify([project]),
+      'latex_ipad_document:alice/offline:dev:main.tex': 'Hauptdatei',
+      'latex_ipad_document:alice/offline:dev:chapter.tex': 'Kapitel'
+    } });
+    app.context.navigator.onLine = false;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await app.elements['local-project-list'].children[0].children[1].handlers.click();
+    const chapter = app.elements['file-list'].children[0].children[0].children[1].children[0].children[0];
+    await chapter.handlers.click();
+    app.elements['toggle-preview'].handlers.click();
+    const view = JSON.parse(app.values.get('latex_ipad_view_state'));
+    assert.equal(view.path, 'chapter.tex');
+    assert.equal(view.preview, true);
+
+    const reloaded = setup({ initial: Object.fromEntries(app.values), localInitial: Object.fromEntries(app.localValues) });
+    reloaded.context.navigator.onLine = false;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(reloaded.elements.dashboard.hidden, true);
+    assert.equal(reloaded.elements.editor.value, 'Kapitel');
+    assert.equal(reloaded.elements['preview-container'].classList.contains('visible'), true);
+    assert.equal(reloaded.requests.length, 0);
+    assert.ok(reloaded.logs.includes('Letzte Ansicht lokal wiederhergestellt.'));
+    await reloaded.elements['open-dashboard'].handlers.click();
+    assert.equal(reloaded.values.has('latex_ipad_view_state'), false);
+    assert.equal(reloaded.elements['preview-container'].classList.contains('visible'), false);
+});
+
+test('Fehlende lokale Datei verhindert Wiederherstellung und wird sichtbar gemeldet', async () => {
+    const app = setup({
+      initial: { latex_ipad_view_state: JSON.stringify({ repo: 'alice/offline', branch: 'main', path: 'missing.tex', hasFile: true, preview: false }) },
+      localInitial: { latex_ipad_projects: JSON.stringify([{ id: 'alice/offline', repo: 'alice/offline', branch: 'main', paths: ['missing.tex'] }]) }
+    });
+    app.context.navigator.onLine = false;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(app.elements.dashboard.hidden, false);
+    assert.match(app.footer.textContent, /Ansicht konnte nicht wiederhergestellt werden/);
+    assert.ok(app.logs.includes('Letzte Ansicht konnte nicht lokal wiederhergestellt werden.'));
+    assert.equal(app.requests.length, 0);
+});
+
+test('Kompilierung berücksichtigt lokale Ersatzkopien auch bei verfügbarer IndexedDB', async () => {
+  const app = setup({
+    withIndexedDB: true, exposeSave: true,
+    localInitial: { 'latex_ipad_document:alice/offline:main:main.tex': 'Lokale Ersatzkopie' }
+  });
+  const records = await app.context.window.testSave.readProjectRecords({ repo: 'alice/offline', branch: 'main' });
+  assert.equal(records.length, 1);
+  assert.equal(records[0].path, 'main.tex');
+  assert.equal(records[0].content, 'Lokale Ersatzkopie');
+});
+
+test('Eine leere wiederhergestellte Datei bleibt auch im Monaco-Editor leer', async () => {
+  let initialValue;
+  const monaco = {
+    MarkerSeverity: { Error: 8 },
+    editor: {
+      create(_host, options) {
+        initialValue = options.value;
+        return { onDidChangeModelContent() {}, getModel() { return null; } };
+      },
+      setModelMarkers() {}
+    }
+  };
+  const app = setup({
+    monaco,
+    initial: { latex_ipad_view_state: JSON.stringify({ repo: 'alice/empty', branch: 'main', path: 'main.tex', hasFile: true, preview: false }) },
+    localInitial: {
+      latex_ipad_projects: JSON.stringify([{ id: 'alice/empty', repo: 'alice/empty', branch: 'main', paths: ['main.tex'] }]),
+      'latex_ipad_document:alice/empty:main:main.tex': ''
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(app.elements.dashboard.hidden, true);
+  assert.equal(initialValue, '');
+  assert.equal(app.elements['preview-container'].classList.contains('visible'), false);
+});
+
 test('Neue TeX-Datei lässt sich im gewählten Ordner lokal und offline anlegen', async () => {
   const project = {
     id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex',
@@ -1414,6 +1495,8 @@ test('UI-Aktionen sind als zugängliche Symbole ausgezeichnet; Login und Protoko
   assert.match(html, /id="dashboard-create-repo" type="button">Neues GitHub-Repository<\/button>/);
   assert.match(footer, /id="gh-login-btn"[^>]*data-icon="github"/);
   assert.match(footer, /id="toggle-log"[^>]*data-icon/);
+  assert.ok(footer.indexOf('id="toggle-log"') > footer.indexOf('id="app-status"'));
+  assert.match(html, /button\[data-icon="log"\]::before \{ content: "\\e1b4"/);
   assert.doesNotMatch(html, /id="repo-label"/);
   assert.match(html, /id="dashboard-open-repo"/);
   for (const [, attributes] of html.matchAll(/<button\b([^>]*)>/g)) {

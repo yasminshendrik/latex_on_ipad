@@ -9,6 +9,7 @@
   const COMPILE_TIMEOUT_MS = 3 * 60 * 1000;
   const TEX_FILE = /\.(tex|latex|ltx)$/i;
   const PROJECT_SETTINGS_PATH = '.latex-ipad/settings.json';
+  const VIEW_STATE_KEY = 'latex_ipad_view_state';
   const logActivity = (message, options) => {
     if (typeof window.__technicalLog === 'function') window.__technicalLog(message, options);
   };
@@ -659,19 +660,22 @@
   function normalizeDiagnosticFile(file) { return file ? String(file).replace(/^(\.\/)+/, '') : ''; }
 
   async function readProjectRecords(context) {
+    let records = [];
     try {
-      return (await readAllRecords('files')).filter((record) => record.repo === context.repo && record.branch === context.branch);
+      records = (await readAllRecords('files')).filter((record) => record.repo === context.repo && record.branch === context.branch);
     } catch (error) {
-      const prefix = `latex_ipad_document:${context.repo}:${context.branch}:`;
-      const records = [];
-      for (let index = 0; index < localStorage.length; index += 1) {
-        const key = localStorage.key(index);
-        if (key?.startsWith(prefix)) {
-          records.push({ path: key.slice(prefix.length), content: localStorage.getItem(key) });
-        }
-      }
-      return records;
+      logActivity('Projektdateien konnten nicht aus IndexedDB gelesen werden; lokale Ersatzkopien werden verwendet.');
     }
+    const paths = new Set(records.map((record) => record.path));
+    const prefix = `latex_ipad_document:${context.repo}:${context.branch}:`;
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key?.startsWith(prefix)) {
+        const path = key.slice(prefix.length);
+        if (!paths.has(path)) records.push({ path, content: localStorage.getItem(key) });
+      }
+    }
+    return records;
   }
 
   // Die Auswahl wird pro Projekt und Branch gemerkt; ohne Auswahl wird main.tex vorgeschlagen, sofern vorhanden.
@@ -1440,6 +1444,7 @@
   document.getElementById('toggle-preview').addEventListener('click', () => {
     previewContainer.classList.toggle('visible');
     updatePreviewResizer();
+    saveViewState();
     if (!previewContainer.classList.contains('visible')) {
       clearPdfPreview();
       return;
@@ -1556,7 +1561,7 @@
       };
       await new Promise((resolve) => window.require.config({ paths: { vs: MONACO_BASE } })(['vs/editor/editor.main'], resolve));
       monacoEditor = window.monaco.editor.create(monacoHost, {
-        value: textarea.value || DEFAULT_DOCUMENT,
+        value: textarea.value,
         language: 'latex',
         theme: 'vs',
         automaticLayout: true,
@@ -2086,6 +2091,58 @@
     previewButton.hidden = false;
     sidebarToggle.disabled = false;
     addTexFileButton.disabled = false;
+    saveViewState();
+  }
+
+  function saveViewState() {
+    try {
+      sessionStorage.setItem(VIEW_STATE_KEY, JSON.stringify({
+        repo: repoName || 'local', branch: branchName, path: activePath,
+        hasFile: activeFileLoaded, preview: previewVisible()
+      }));
+    } catch (error) {
+      logActivity('Aktuelle Ansicht konnte nicht für das Neuladen gespeichert werden.');
+      setStatus(`Ansicht konnte nicht gespeichert werden: ${error.message}`);
+    }
+  }
+
+  async function restoreViewState() {
+    let view;
+    try {
+      const saved = sessionStorage.getItem(VIEW_STATE_KEY);
+      if (!saved) return;
+      view = JSON.parse(saved);
+      if (!view || typeof view.repo !== 'string' || !view.repo ||
+          typeof view.branch !== 'string' || !view.branch || !isSafeProjectPath(view.path) ||
+          typeof view.hasFile !== 'boolean' || typeof view.preview !== 'boolean') {
+        throw new Error('Gespeicherte Ansicht ist ungültig.');
+      }
+      const catalogProject = readProjectCatalog().find((project) => project.id === view.repo);
+      let storedProject;
+      try { storedProject = await readRecord('projects', view.repo); }
+      catch (error) { logActivity('Projektmetadaten für die Wiederherstellung konnten nicht aus IndexedDB gelesen werden.'); }
+      const project = storedProject || catalogProject;
+      if (!project || (view.hasFile && !(await readStoredFile(view.repo, view.branch, view.path)))) {
+        throw new Error('Das zuletzt geöffnete Projekt oder die Datei ist lokal nicht verfügbar.');
+      }
+      activeFileLoaded = false;
+      await openLocalProject({
+        ...project, repo: view.repo, branch: view.branch, activePath: view.path,
+        paths: project.branch === view.branch ? [...new Set([...(project.paths || []), view.path])] : [view.path]
+      });
+      if (view.preview) {
+        previewContainer.classList.add('visible');
+        updatePreviewResizer();
+        saveViewState();
+        requestCompile('preview');
+      }
+      logActivity('Letzte Ansicht lokal wiederhergestellt.');
+    } catch (error) {
+      logActivity('Letzte Ansicht konnte nicht lokal wiederhergestellt werden.');
+      const message = `Ansicht konnte nicht wiederhergestellt werden: ${error.message}`;
+      setStatus(message);
+      return message;
+    }
   }
 
   function openNewTexFileDialog() {
@@ -2175,6 +2232,7 @@
       activePath = path;
       activeFileLoaded = true;
       setEditorValue('');
+      saveViewState();
       renderSidebar();
       await refreshMainFiles();
       newTexFileDialog.close();
@@ -2358,6 +2416,7 @@
       remoteSha: saved?.remoteSha,
       updatedAt: Date.now()
     });
+    saveViewState();
     setStatus(`Datei geladen: ${path}`);
     logActivity('Datei im Editor geöffnet.');
   }
@@ -2689,6 +2748,7 @@
       if (!sameContext) collapsedFolders.clear();
       renderSidebar();
       await refreshMainFiles();
+      if (dashboard.hidden) saveViewState();
       try {
         await storeProject({
           id: repoName,
@@ -2998,6 +3058,14 @@
       projectSettingsButton.hidden = true;
       saveButton.hidden = true;
       previewButton.hidden = true;
+      previewContainer.classList.remove('visible');
+      updatePreviewResizer();
+      clearPdfPreview();
+      try { sessionStorage.removeItem(VIEW_STATE_KEY); }
+      catch (error) {
+        logActivity('Gespeicherte Ansicht konnte nicht gelöscht werden.');
+        setStatus(`Ansicht konnte nicht zurückgesetzt werden: ${error.message}`);
+      }
       if (projectSettingsDialog.open) projectSettingsDialog.close();
       sidebarToggle.disabled = true;
       await refreshDashboard();
@@ -3038,12 +3106,13 @@
       scheduleLint();
       refreshMainFiles();
       await refreshDashboard();
+      const restoreError = await restoreViewState();
       await loadMonaco();
       await registerServiceWorker();
       updateProjectProperties();
       branchSelect.value = branchName;
       updateLoginButton();
-      setStatus(navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.');
+      setStatus(restoreError || (navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.'));
     } catch (error) {
       logActivity('App-Initialisierung fehlgeschlagen.');
       setStatus(`App-Fehler: ${error.message}`);

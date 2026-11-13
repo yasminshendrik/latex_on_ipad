@@ -35,7 +35,7 @@
     button[data-icon="cloud"]::before { content: "\e21d"; }
     button[data-icon="compare"]::before { content: "\e086"; }
     button[data-icon="upload"]::before { content: "\e12e"; }
-    button[data-icon="log"]::before { content: "\e022"; }
+    button[data-icon="log"]::before { content: "\e1b4"; }
     button[data-icon="delete"]::before { content: "\e03d"; }
     button[data-icon="copy"]::before { content: "\e245"; }
     button[data-icon="accept"]::before { content: "\e05b"; }
@@ -125,6 +125,7 @@
     #app-log { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
     footer { flex: 0 0 auto; min-height: 46px; padding: 5px 10px; display: flex; align-items: center; gap: 8px; color: #b7e3ff; background: #2d2d2d; font-size: 11px; }
     #footer-actions { display: flex; gap: 6px; }
+    #toggle-log { margin-left: auto; }
     #app-status { flex: 1; min-width: 0; text-align: right; overflow-wrap: anywhere; }
     @media (orientation: portrait) {
       header { justify-content: initial; }
@@ -351,9 +352,9 @@
   <footer>
     <div id="footer-actions">
       <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
-      <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
     </div>
     <span id="app-status" role="status">Offline-Editor wird initialisiert…</span>
+    <button id="toggle-log" type="button" data-icon="log" aria-controls="technical-log" aria-expanded="false" aria-label="Technisches Protokoll umschalten" title="Technisches Protokoll umschalten">Log</button>
   </footer>
   <script src="js/build-info.js"></script>
   <script src="js/diagnostic.js"></script>

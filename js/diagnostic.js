@@ -50,7 +50,7 @@
     if (copyFeedbackTimer) clearTimeout(copyFeedbackTimer);
     copyFeedbackTimer = undefined;
     if (!copyButton) return;
-    copyButton.setAttribute('data-icon', 'copy');
+    copyButton.textContent = 'Kopieren';
     copyButton.setAttribute('aria-label', 'Aktuelles Protokoll kopieren');
     copyButton.title = 'Aktuelles Protokoll kopieren';
   }
@@ -89,7 +89,7 @@
         if (!copied) throw new Error('Kopieren wird von diesem Browser nicht unterstützt.');
       }
       setMessage('');
-      copyButton.setAttribute('data-icon', 'accept');
+      copyButton.textContent = 'Kopiert';
       copyButton.setAttribute('aria-label', 'Protokoll kopiert');
       copyButton.title = 'Protokoll kopiert';
       copyFeedbackTimer = setTimeout(resetCopyButton, 1500);
@@ -104,11 +104,12 @@
       #technical-log-heading { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; color: #9cdcfe; background: #252526; font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
       #technical-log-title { flex: 1 1 180px; }
       #technical-log button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
-      #technical-log button[data-icon] { width: 36px; min-width: 36px; padding: 4px; font-size: 0; }
+      #technical-log button[data-log-icon]::before { display: inline-block; margin-right: 5px; font: 15px/1 "SAP-icons"; }
+      #technical-log button[data-log-icon="delete"]::before { content: "\\e03d"; }
+      #technical-log button[data-log-icon="copy"]::before { content: "\\e245"; }
       #technical-log-tabs { display: flex; gap: 4px; }
       #technical-log-tabs [aria-selected="true"] { border-bottom: 2px solid #9cdcfe; }
       #technical-log .technical-log-link { min-height: 0; padding: 0; border: 0; background: none; color: #9cdcfe; text-align: left; text-decoration: underline; font: inherit; }
-      #technical-log .technical-log-link::before { content: '\e244'; margin-right: 5px; font: 15px/1 "SAP-icons"; }
       #technical-log-message { flex: 0 1 auto; color: #b7e3ff; font-weight: normal; }
       #technical-log-entries, #compiler-log-entries { min-height: 0; overflow: auto; padding: 4px 10px; overflow-wrap: anywhere; }
       #compiler-log-entries { white-space: pre-wrap; }
@@ -123,8 +124,8 @@
     const heading = document.createElement('div'); heading.id = 'technical-log-heading';
     const title = document.createElement('span'); title.id = 'technical-log-title'; title.textContent = 'Protokoll';
     const tabs = document.createElement('div'); tabs.id = 'technical-log-tabs'; tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Protokoll auswählen');
-    generalTab = document.createElement('button'); generalTab.type = 'button'; generalTab.id = 'general-log-tab'; generalTab.textContent = 'Allgemein'; generalTab.setAttribute('data-icon', 'log'); generalTab.setAttribute('aria-label', 'Allgemeines Protokoll'); generalTab.title = 'Allgemeines Protokoll'; generalTab.setAttribute('role', 'tab'); generalTab.setAttribute('aria-controls', 'technical-log-entries');
-    compilerTab = document.createElement('button'); compilerTab.type = 'button'; compilerTab.id = 'compiler-log-tab'; compilerTab.textContent = 'Compiler'; compilerTab.setAttribute('data-icon', 'source-code'); compilerTab.setAttribute('aria-label', 'Compiler-Protokoll'); compilerTab.title = 'Compiler-Protokoll'; compilerTab.setAttribute('role', 'tab'); compilerTab.setAttribute('aria-controls', 'compiler-log-entries');
+    generalTab = document.createElement('button'); generalTab.type = 'button'; generalTab.id = 'general-log-tab'; generalTab.textContent = 'Allgemein'; generalTab.setAttribute('aria-label', 'Allgemeines Protokoll'); generalTab.title = 'Allgemeines Protokoll'; generalTab.setAttribute('role', 'tab'); generalTab.setAttribute('aria-controls', 'technical-log-entries');
+    compilerTab = document.createElement('button'); compilerTab.type = 'button'; compilerTab.id = 'compiler-log-tab'; compilerTab.textContent = 'Compiler'; compilerTab.setAttribute('aria-label', 'Compiler-Protokoll'); compilerTab.title = 'Compiler-Protokoll'; compilerTab.setAttribute('role', 'tab'); compilerTab.setAttribute('aria-controls', 'compiler-log-entries');
     generalTab.addEventListener('click', () => selectTab('general'));
     compilerTab.addEventListener('click', () => selectTab('compiler'));
     for (const tab of [generalTab, compilerTab]) tab.addEventListener('keydown', (event) => {
@@ -135,8 +136,8 @@
       (next === 'general' ? generalTab : compilerTab).focus();
     });
     tabs.append(generalTab, compilerTab);
-    const clearButton = document.createElement('button'); clearButton.type = 'button'; clearButton.textContent = 'Leeren'; clearButton.setAttribute('data-icon', 'delete'); clearButton.setAttribute('aria-label', 'Aktuelles Protokoll leeren'); clearButton.title = 'Aktuelles Protokoll leeren'; clearButton.addEventListener('click', clearEntries);
-    copyButton = document.createElement('button'); copyButton.type = 'button'; copyButton.textContent = 'Alles kopieren'; copyButton.setAttribute('data-icon', 'copy'); copyButton.setAttribute('aria-label', 'Aktuelles Protokoll kopieren'); copyButton.title = 'Aktuelles Protokoll kopieren'; copyButton.setAttribute('aria-live', 'polite'); copyButton.setAttribute('aria-atomic', 'true'); copyButton.addEventListener('click', copyAll);
+    const clearButton = document.createElement('button'); clearButton.type = 'button'; clearButton.textContent = 'Leeren'; clearButton.setAttribute('data-log-icon', 'delete'); clearButton.setAttribute('aria-label', 'Aktuelles Protokoll leeren'); clearButton.title = 'Aktuelles Protokoll leeren'; clearButton.addEventListener('click', clearEntries);
+    copyButton = document.createElement('button'); copyButton.type = 'button'; copyButton.textContent = 'Kopieren'; copyButton.setAttribute('data-log-icon', 'copy'); copyButton.setAttribute('aria-label', 'Aktuelles Protokoll kopieren'); copyButton.title = 'Aktuelles Protokoll kopieren'; copyButton.setAttribute('aria-live', 'polite'); copyButton.setAttribute('aria-atomic', 'true'); copyButton.addEventListener('click', copyAll);
     messageNode = document.createElement('span'); messageNode.id = 'technical-log-message'; messageNode.setAttribute('role', 'status');
     heading.append(title, tabs, clearButton, copyButton, messageNode);
     list = document.createElement('div'); list.id = 'technical-log-entries'; list.setAttribute('role', 'tabpanel'); list.setAttribute('aria-labelledby', 'general-log-tab'); list.setAttribute('aria-live', 'polite');
