@@ -73,6 +73,8 @@
     .file-item { position: relative; padding: 4px 8px; overflow-wrap: anywhere; }
     .file-item.folder-item { padding-right: 50px; }
     .folder-add { position: absolute; top: 4px; right: 4px; }
+    [data-change="new"]::after { content: " · Neu"; color: #107e3e; font-size: 12px; }
+    [data-change="modified"]::after { content: " · Geändert"; color: #9c5000; font-size: 12px; }
     .file-select-button { width: 100%; padding: 4px; background: transparent; text-align: left; overflow-wrap: anywhere; }
     .file-select-button[aria-current="page"] { color: #fff; background: #094771; }
     .folder-toggle { width: 100%; padding: 4px; background: transparent; text-align: left; }
@@ -206,7 +208,7 @@
     </div>
     <div class="toolbar-group" id="toolbar-center">
       <button id="open-dashboard" type="button" hidden data-icon="home" aria-label="Zur Übersicht" title="Zur Übersicht">Übersicht</button>
-      <button id="save-btn" type="button" hidden data-icon="save" aria-label="Lokal speichern" title="Lokal speichern">Speichern</button>
+      <button id="save-btn" type="button" hidden disabled data-icon="save" aria-label="Speichern" title="Keine Änderungen">Speichern</button>
       <button id="project-settings-button" type="button" hidden data-icon="settings" aria-label="Projekteinstellungen öffnen" title="Projekteinstellungen">Projekteinstellungen</button>
       <button id="gh-login-btn" type="button" data-icon="github" aria-label="Mit GitHub verbinden" title="Mit GitHub verbinden">GitHub Login</button>
     </div>

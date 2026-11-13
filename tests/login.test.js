@@ -1547,6 +1547,66 @@ test('Ein neu angelegter leerer Ordner wird beim GitHub-Commit mit .gitkeep übe
   assert.equal(metadata.isNewFile, false);
 });
 
+test('Speichern und Dateimarkierung folgen dem tatsächlichen Editorstand', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  await new Promise((resolve) => setImmediate(resolve));
+  const file = app.elements['file-list'].children[0].children[0].children[1].children.find(
+    (row) => row.children[0].textContent === 'main.tex'
+  ).children[0];
+  assert.equal(app.elements['save-btn'].disabled, true);
+  app.elements.editor.value = 'Geändert';
+  app.elements.editor.handlers.input();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(app.elements['save-btn'].disabled, false);
+  assert.equal(file.getAttribute('data-change'), 'modified');
+  assert.match(file.getAttribute('aria-label'), /geändert/);
+  app.elements.editor.value = 'Remote-Hauptdatei';
+  app.elements.editor.handlers.input();
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(app.elements['save-btn'].disabled, true);
+  assert.equal(file.getAttribute('data-change'), null);
+});
+
+test('Neue Ordner und Dateien bleiben nach lokalem Wiederöffnen markiert', async () => {
+  const project = { id: 'local', repo: 'local', branch: 'main', activePath: 'main.tex', paths: ['main.tex'] };
+  const app = setup({ localInitial: {
+    latex_ipad_projects: JSON.stringify([project]),
+    'latex_ipad_document:local:main:main.tex': 'Original'
+  } });
+  await new Promise((resolve) => setImmediate(resolve));
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  const projectRow = () => app.elements['file-list'].children[0].children[0];
+  const folder = () => projectRow().children[1].children.find((row) => row.children[0].textContent === 'Kapitel');
+  projectRow().children[2].handlers.click();
+  app.elements['new-tex-file-kind'].value = 'folder';
+  app.elements['new-tex-file-name'].value = 'Kapitel';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  folder().children[2].handlers.click();
+  app.elements['new-tex-file-name'].value = 'neu.tex';
+  await app.elements['new-tex-file-form'].handlers.submit({ preventDefault() {} });
+  await app.elements['open-dashboard'].handlers.click();
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(folder().children[0].getAttribute('data-change'), 'new');
+  const file = folder().children[1].children.find((row) => row.children[0].textContent === 'neu.tex').children[0];
+  assert.equal(file.getAttribute('data-change'), 'new');
+  assert.match(file.getAttribute('aria-label'), /neu/);
+});
+
+test('Geänderte Projekteinstellungen aktivieren Speichern auch ohne Dateiänderung', async () => {
+  const app = setup({ fetchImpl: syncApiFetch() });
+  await openSyncRepository(app);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, true);
+  app.elements['project-hyphenation'].value = 'english';
+  await app.elements['project-hyphenation'].handlers.change();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, false);
+  await app.elements['save-btn'].handlers.click();
+  assert.equal(app.elements['commit-dialog'].open, true);
+});
+
 test('Editor-Layout passt Sidebar, Vorschau und Touch-Ziele an die iPad-Ausrichtung an', () => {
   assert.match(html, /button, select \{ min-height: 36px;/);
   assert.match(html, /#sidebar\.collapsed \{ width: 0; flex-basis: 0; overflow: hidden;/);
@@ -1655,6 +1715,8 @@ test('Speichern bündelt geänderte Dateien und versionierte Projekteinstellunge
   assert.equal(JSON.parse(app.localValues.get('latex_ipad_projects'))[0].remoteHeadShas.main, 'commit-created');
   assert.match(app.footer.textContent, /GitHub-Commit erfolgreich/);
   assert.equal(app.elements['commit-dialog'].open, false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, true);
 });
 
 test('Remote-Projekteinstellungen werden beim Öffnen wiederhergestellt', async () => {
@@ -1749,6 +1811,8 @@ test('GitHub-Schreibfehler bleibt sichtbar und lokale Änderungen bleiben erhalt
   await app.elements['commit-form'].handlers.submit({ preventDefault() {} });
   assert.match(app.elements['commit-error'].textContent, /GitHub API 403/);
   assert.equal(app.localValues.get('latex_ipad_document:alice/project:main:main.tex'), 'Lokale Änderung ohne Berechtigung');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(app.elements['save-btn'].disabled, false);
   assert.equal(app.requests.some((request) =>
     request.url.endsWith('/git/refs/heads/main') && request.options.method === 'PATCH'
   ), false);

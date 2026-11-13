@@ -23,6 +23,10 @@
   const texOnlyFilter = document.getElementById('tex-only-filter');
   let sidebarItems = [];
   const collapsedFolders = new Set();
+  let changeStateRequest = 0;
+  let changeStateTimer;
+  let changeMarkers = new Map();
+  let changeMarkerTargets = [];
   let previewDrag;
   const SCRIPT_URL = document.currentScript?.src || new URL('./js/app.js', location.href).href;
 
@@ -337,7 +341,7 @@
   }
 
   async function storeFile(record) {
-    const { id, repo, branch, path, content, updatedAt, baseContent, remoteSha, isNewFile } = record;
+    const { id, repo, branch, path, content, updatedAt, baseContent, remoteSha, isNewFile, initialContent } = record;
     try {
       await storeRecord('files', record);
       return;
@@ -348,7 +352,7 @@
       }
       try {
         localStorage.setItem(`latex_ipad_document:${repo}:${branch}:${path}`, content);
-        localStorage.setItem(fileMetadataKey(repo, branch, path), JSON.stringify({ baseContent, remoteSha, isNewFile }));
+        localStorage.setItem(fileMetadataKey(repo, branch, path), JSON.stringify({ baseContent, remoteSha, isNewFile, initialContent }));
         const previous = readProjectCatalog().find((project) => project.id === repo);
         writeProjectCatalog({
           id: repo,
@@ -424,6 +428,8 @@
     activeFileLoaded = true;
     scheduleAutoSave();
     scheduleLint();
+    clearTimeout(changeStateTimer);
+    changeStateTimer = setTimeout(updateChangeState, 150);
   }
 
   function insertLatexQuotes(event, useMonaco) {
@@ -576,6 +582,7 @@
       updatedAt: Date.now()
     });
     if (context.repo !== 'local') await storeVersionedProjectSettings(context, settings);
+    if (isCurrentContext(context)) updateChangeState();
     logActivity('Projekteinstellungen lokal gespeichert.');
     if (!quiet) {
       setStatus(indexedDbSaved
@@ -637,6 +644,7 @@
       baseContent: existing?.baseContent ?? '',
       remoteSha: existing?.remoteSha,
       isNewFile: existing?.isNewFile ?? !existing?.remoteSha,
+      initialContent: existing?.initialContent ?? existing?.content ?? content,
       updatedAt: Date.now()
     });
     const project = readProjectCatalog().find((item) => item.id === context.repo);
@@ -1289,6 +1297,7 @@
         logActivity('Datei lokal gespeichert.');
         setStatus(`Lokal gespeichert: ${path}`);
       }
+      if (isCurrentContext({ repo, branch })) updateChangeState();
       requestCompile('save', { repo, branch });
     };
     const result = saveQueue.catch(() => {}).then(save).then((value) => {
@@ -1660,7 +1669,7 @@
     return response;
   }
 
-  async function readProjectFileRecords(context) {
+  async function readProjectFileRecords(context, quiet = false) {
     const records = new Map();
     try {
       for (const record of await readAllRecords('files')) {
@@ -1670,7 +1679,7 @@
       if ('indexedDB' in window) {
         throw new Error(`Lokale IndexedDB-Dateien konnten nicht vollständig gelesen werden; Commit vorsichtshalber abgebrochen: ${error.message}`);
       }
-      logActivity('IndexedDB-Dateien konnten für den Commit nicht gelesen werden; localStorage wird geprüft.');
+      if (!quiet) logActivity('IndexedDB-Dateien konnten für den Commit nicht gelesen werden; localStorage wird geprüft.');
     }
     const prefix = `latex_ipad_document:${context.repo}:${context.branch}:`;
     for (let index = 0; index < localStorage.length; index += 1) {
@@ -1696,6 +1705,56 @@
   function isChangedTextFile(record) {
     if (record.binary) return false;
     return record.isNewFile === true || typeof record.baseContent !== 'string' || record.content !== record.baseContent;
+  }
+
+  function applyChangeMarkers() {
+    for (const { element, path, label } of changeMarkerTargets) {
+      const state = changeMarkers.get(path);
+      if (state) element.setAttribute('data-change', state);
+      else element.removeAttribute('data-change');
+      element.setAttribute('aria-label', state ? `${label} – ${state === 'new' ? 'neu' : 'geändert'}` : label);
+    }
+  }
+
+  async function updateChangeState() {
+    const request = ++changeStateRequest;
+    const context = projectContext();
+    try {
+      const records = await readProjectFileRecords(context, true);
+      if (request !== changeStateRequest || !isCurrentContext(context)) return;
+      const byPath = new Map(records.map((record) => [record.path, record]));
+      if (activeFileLoaded) {
+        const active = byPath.get(activePath);
+        byPath.set(activePath, { ...active, path: activePath, content: getEditorValue() });
+      }
+      const markers = new Map();
+      for (const record of byPath.values()) {
+        if (record.path === PROJECT_SETTINGS_PATH && record.isNewFile &&
+            typeof record.initialContent === 'string' && record.content === record.initialContent) continue;
+        if (!isChangedTextFile(record)) continue;
+        const placeholder = record.path.endsWith('/.gitkeep');
+        const path = placeholder ? record.path.slice(0, -'/.gitkeep'.length) : record.path;
+        markers.set(path, record.isNewFile ? 'new' : 'modified');
+        const parts = path.split('/');
+        parts.pop();
+        while (parts.length) {
+          const parent = parts.join('/');
+          if (!markers.has(parent)) markers.set(parent, 'modified');
+          parts.pop();
+        }
+        if (!markers.has('')) markers.set('', 'modified');
+      }
+      changeMarkers = markers;
+      saveButton.disabled = markers.size === 0;
+      saveButton.title = saveButton.disabled ? 'Keine Änderungen' : 'Speichern';
+      applyChangeMarkers();
+    } catch (error) {
+      if (request !== changeStateRequest || !isCurrentContext(context)) return;
+      saveButton.disabled = false;
+      saveButton.title = 'Speichern – Änderungsstatus konnte nicht ermittelt werden';
+      logActivity('Änderungsstatus konnte nicht ermittelt werden.');
+      setStatus(`Änderungsstatus konnte nicht ermittelt werden: ${error.message}`);
+    }
   }
 
   function openCommitDialog() {
@@ -1812,6 +1871,7 @@
         remoteHeadShas: { ...(project?.remoteHeadShas || {}), [context.branch]: newCommit.sha },
         updatedAt: Date.now()
       });
+      if (isCurrentContext(context)) updateChangeState();
     } catch (error) {
       throw new Error(`Commit wurde auf GitHub erstellt, aber die lokale Remote-Basis konnte nicht vollständig aktualisiert werden: ${error.message}`);
     }
@@ -1943,6 +2003,7 @@
     projectButton.className = 'folder-toggle';
     projectButton.setAttribute('data-icon', 'folder-blank');
     projectButton.textContent = repoName || 'Lokales Projekt';
+    changeMarkerTargets = [{ element: projectButton, path: '', label: projectButton.textContent }];
     const projectChildren = document.createElement('ul');
     projectChildren.hidden = collapsedFolders.has('');
     projectButton.setAttribute('aria-expanded', String(!projectChildren.hidden));
@@ -1994,6 +2055,7 @@
         label.className = 'folder-toggle';
         label.setAttribute('data-icon', 'folder-blank');
         label.textContent = name;
+        changeMarkerTargets.push({ element: label, path: item.path, label: `Ordner: ${name}` });
         const children = document.createElement('ul');
         children.hidden = collapsedFolders.has(item.path);
         label.setAttribute('aria-expanded', String(!children.hidden));
@@ -2017,6 +2079,7 @@
           label.type = 'button';
           label.className = 'file-select-button';
           label.setAttribute('aria-label', `LaTeX-Datei bearbeiten: ${name}`);
+          changeMarkerTargets.push({ element: label, path: item.path, label: `LaTeX-Datei bearbeiten: ${name}` });
           label.addEventListener('click', async () => {
             if (fileLoadRequest) fileLoadRequest.abort();
             const controller = new AbortController();
@@ -2075,6 +2138,8 @@
     const tree = renderFileTree(sidebarItems);
     fileList.replaceChildren(tree);
     updateActiveFileButton();
+    applyChangeMarkers();
+    updateChangeState();
   }
 
   function validateTree(items) {
@@ -2115,6 +2180,7 @@
     saveButton.hidden = false;
     previewButton.hidden = false;
     sidebarToggle.disabled = false;
+    updateChangeState();
     saveViewState();
   }
 
@@ -2468,6 +2534,7 @@
       remoteSha: saved?.remoteSha,
       updatedAt: Date.now()
     });
+    updateChangeState();
     saveViewState();
     setStatus(`Datei geladen: ${path}`);
     logActivity('Datei im Editor geöffnet.');
@@ -2722,6 +2789,7 @@
       logActivity(`Repository-Download abgeschlossen (${files.length} Dateien, ${unsupported.length} nicht unterstützte Einträge, ${manualConflicts.length} manuelle Konflikte).`);
       appendLocalPathsToTree(tree, localOnly);
       let settingsFile = files.find((file) => file.path === PROJECT_SETTINGS_PATH);
+      let createdSettingsFile = false;
       if (!settingsFile) {
         const settings = readProjectSettings(targetContext);
         settingsFile = {
@@ -2735,6 +2803,7 @@
           updatedAt: Date.now()
         };
         files.push(settingsFile);
+        createdSettingsFile = true;
         appendLocalPathsToTree(tree, [{ type: 'blob', path: PROJECT_SETTINGS_PATH, mode: '100644' }]);
       }
       const localSettingsBeforeRestore = readProjectSettings(targetContext);
@@ -2754,6 +2823,7 @@
         restoredSettings.mainFiles[targetBranch] = selectedMainFile;
         settingsFile.content = serializeProjectSettings(restoredSettings);
       }
+      if (createdSettingsFile) settingsFile.initialContent = settingsFile.content;
       localStorage.setItem(projectSettingsKey(nextRepo), JSON.stringify(restoredSettings));
       localStorage.removeItem(mainFileKey(targetContext));
       validateTree(tree);
