@@ -101,16 +101,16 @@
     style.textContent = `
       #technical-log { flex: 0 0 150px; min-height: 100px; display: flex; flex-direction: column; border-top: 1px solid var(--fiori-border, #d5dadd); background: var(--fiori-surface, #fff); color: var(--fiori-text, #1d2d3e); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
       #technical-log[hidden] { display: none; }
-      #technical-log-heading { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 5px 10px; color: var(--fiori-text, #1d2d3e); background: var(--fiori-background, #f5f6f7); border-bottom: 1px solid var(--fiori-border, #d5dadd); font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
-      #technical-log-title { flex: 0 0 auto; margin-right: 8px; }
-      #technical-log-actions { display: flex; gap: 4px; margin-left: auto; }
+      #technical-log-heading { flex: 0 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 6px; padding: 5px 10px 0; color: var(--fiori-text, #1d2d3e); background: var(--fiori-background, #f5f6f7); border-bottom: 1px solid var(--fiori-border, #d5dadd); font: 600 12px -apple-system, BlinkMacSystemFont, sans-serif; }
+      #technical-log-title { grid-column: 2; grid-row: 1; text-align: center; align-self: center; padding-bottom: 5px; }
+      #technical-log-actions { grid-column: 3; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: 4px; align-self: center; padding-bottom: 5px; }
       #technical-log button { min-height: 30px; min-width: 30px; padding: 4px 9px; font-size: 12px; border: 1px solid var(--fiori-border, #d5dadd); border-radius: 0.5rem; background: var(--fiori-surface, #fff); color: var(--fiori-brand, #0070f2); }
       #technical-log button:hover { background: var(--fiori-selected, #e5f0ff); }
       #technical-log button[data-log-icon]::before { display: inline-block; font: 15px/1 "SAP-icons"; }
       #technical-log button[data-log-icon="accept"]::before { content: "\\e05b"; }
       #technical-log button[data-log-icon="delete"]::before { content: "\\e03d"; }
       #technical-log button[data-log-icon="copy"]::before { content: "\\e245"; }
-      #technical-log-tabs { display: flex; gap: 0; align-self: flex-end; margin-bottom: -6px; }
+      #technical-log-tabs { grid-column: 1; grid-row: 1; justify-self: start; display: flex; gap: 0; margin-bottom: -1px; }
       #technical-log-tabs button { min-height: 32px; border-radius: 0.5rem 0.5rem 0 0; border-bottom-color: transparent; margin-right: -1px; }
       #technical-log-tabs [aria-selected="true"] { background: var(--fiori-surface, #fff); border-color: var(--fiori-border, #d5dadd); border-top: 3px solid var(--fiori-brand, #0070f2); border-bottom-color: var(--fiori-surface, #fff); font-weight: 600; position: relative; }
       #technical-log .technical-log-link { min-height: 0; padding: 0; border: 0; background: none; color: var(--fiori-brand, #0070f2); text-align: left; text-decoration: underline; font: inherit; }
@@ -143,8 +143,8 @@
     const clearButton = document.createElement('button'); clearButton.type = 'button'; clearButton.setAttribute('data-log-icon', 'delete'); clearButton.setAttribute('aria-label', 'Aktuelles Protokoll leeren'); clearButton.title = 'Aktuelles Protokoll leeren'; clearButton.addEventListener('click', clearEntries);
     copyButton = document.createElement('button'); copyButton.type = 'button'; copyButton.setAttribute('data-log-icon', 'copy'); copyButton.setAttribute('aria-label', 'Aktuelles Protokoll kopieren'); copyButton.title = 'Aktuelles Protokoll kopieren'; copyButton.setAttribute('aria-live', 'polite'); copyButton.setAttribute('aria-atomic', 'true'); copyButton.addEventListener('click', copyAll);
     messageNode = document.createElement('span'); messageNode.id = 'technical-log-message'; messageNode.setAttribute('role', 'status');
-    const actions = document.createElement('div'); actions.id = 'technical-log-actions'; actions.append(clearButton, copyButton);
-    heading.append(title, tabs, messageNode, actions);
+    const actions = document.createElement('div'); actions.id = 'technical-log-actions'; actions.append(messageNode, clearButton, copyButton);
+    heading.append(tabs, title, actions);
     list = document.createElement('div'); list.id = 'technical-log-entries'; list.setAttribute('role', 'tabpanel'); list.setAttribute('aria-labelledby', 'general-log-tab'); list.setAttribute('aria-live', 'polite');
     compilerPanel = document.createElement('div'); compilerPanel.id = 'compiler-log-entries'; compilerPanel.setAttribute('role', 'tabpanel'); compilerPanel.setAttribute('aria-labelledby', 'compiler-log-tab'); compilerPanel.setAttribute('aria-live', 'polite');
     panel.append(heading, list, compilerPanel);
