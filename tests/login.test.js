@@ -8,7 +8,7 @@ const { webcrypto, createHash } = require('node:crypto');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'js/app.js'), 'utf8');
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'github-login-dialog', 'github-login-form',
+const ids = ['editor', 'monaco-editor', 'lint-results', 'gh-login-btn', 'dashboard-actions', 'github-login-dialog', 'github-login-form',
   'github-token', 'github-login-error', 'github-login-submit', 'github-login-cancel',
   'repo-dialog', 'repo-count', 'repo-error', 'repo-list', 'repo-retry', 'repo-cancel',
   'repo-create', 'branch-select', 'branch-selector', 'project-settings-button', 'project-settings-dialog', 'project-settings-close',
@@ -51,7 +51,8 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
         }
       },
       addEventListener(type, handler) { this.handlers[type] = handler; },
-      appendChild(child) { this.children.push(child); },
+      appendChild(child) { this.children.push(child); child.parentNode = this; },
+      insertBefore(child) { this.children.push(child); child.parentNode = this; },
       append(...children) { this.children.push(...children); },
       replaceChildren(...children) { this.children = children; },
       getContext() { return {}; },
@@ -65,6 +66,7 @@ function setup({ initial = {}, localInitial = {}, fetchImpl, WorkerClass, monaco
   }
   const elements = Object.fromEntries(ids.map((id) => [id, element()]));
   elements.dashboard.hidden = false;
+  elements['gh-login-btn'].parentNode = element();
   elements['tex-only-filter'].checked = true;
   elements['toggle-sidebar'].disabled = true;
   const dialog = elements['github-login-dialog'];
@@ -277,12 +279,30 @@ test('Gültiges Token wird geprüft, nur für die Sitzung gespeichert und bei Ab
   assert.equal(app.elements['github-login-dialog'].open, false);
   assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Von GitHub abmelden');
   assert.equal(app.elements['gh-login-btn'].attributes['data-icon'], 'github');
-  assert.equal(app.elements['gh-login-btn'].textContent, 'Abmelden');
+  assert.equal(app.elements['gh-login-btn'].textContent, 'Logout');
   assert.equal(app.elements['repo-dialog'].open, true);
   app.elements['gh-login-btn'].handlers.click();
   assert.equal(app.values.has('gh_token'), false);
   assert.equal(app.elements['gh-login-btn'].attributes['aria-label'], 'Mit GitHub verbinden');
   assert.equal(app.elements['gh-login-btn'].attributes['data-icon'], 'github');
+});
+
+test('Login-Knopf steht auf dem Dashboard mit Text bei den GitHub-Aktionen und im Editor in der Toolbar', async () => {
+  const project = { id: 'alice/offline', repo: 'alice/offline', branch: 'dev', activePath: 'main.tex', paths: ['main.tex'] };
+  const app = setup({ localInitial: {
+    latex_ipad_projects: JSON.stringify([project]),
+    'latex_ipad_document:alice/offline:dev:main.tex': 'Hauptdatei'
+  } });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const button = app.elements['gh-login-btn'];
+  assert.equal(button.parentNode, app.elements['dashboard-actions']);
+  assert.equal(button.textContent, 'Login');
+  await app.elements['local-project-list'].children[0].children[1].handlers.click();
+  assert.notEqual(button.parentNode, app.elements['dashboard-actions']);
+  assert.equal(button.textContent, 'GitHub Login');
+  await app.elements['open-dashboard'].handlers.click();
+  assert.equal(button.parentNode, app.elements['dashboard-actions']);
+  assert.equal(button.textContent, 'Login');
 });
 
 test('GitHub-Repository öffnen startet ohne Token direkt die Anmeldung und setzt die Aktion fort', async () => {

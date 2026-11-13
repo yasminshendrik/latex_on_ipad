@@ -162,13 +162,24 @@
     button.setAttribute('aria-label', label);
     button.title = label;
   }
+  const loginButtonHome = loginButton.parentNode;
+  const loginButtonAnchor = loginButton.nextSibling;
+  const dashboardActions = document.getElementById('dashboard-actions');
+  // Auf dem Dashboard steht der Login-Knopf mit Text neben den GitHub-Aktionen, im Editor als Icon in der Toolbar.
+  function placeLoginButton(onDashboard) {
+    if (onDashboard) dashboardActions.appendChild(loginButton);
+    else loginButtonHome.insertBefore(loginButton, loginButtonAnchor);
+    loginButton.setAttribute('data-on-dashboard', String(onDashboard));
+    updateLoginButton();
+  }
   function updateLoginButton() {
+    const label = loginButton.getAttribute('data-on-dashboard') === 'true';
     if (token) {
-      loginButton.textContent = 'Abmelden';
+      loginButton.textContent = label ? 'Logout' : 'Abmelden';
       setButtonIcon(loginButton, 'github', 'Von GitHub abmelden');
       loginButton.setAttribute('data-connected', 'true');
     } else {
-      loginButton.textContent = 'GitHub Login';
+      loginButton.textContent = label ? 'Login' : 'GitHub Login';
       setButtonIcon(loginButton, 'github', 'Mit GitHub verbinden');
       loginButton.removeAttribute('data-connected');
     }
@@ -2083,6 +2094,7 @@
 
   function showEditor() {
     dashboard.hidden = true;
+    placeLoginButton(false);
     document.getElementById('main-container').hidden = false;
     sidebarToggle.hidden = false;
     dashboardButton.hidden = false;
@@ -3053,6 +3065,7 @@
       }
       document.getElementById('main-container').hidden = true;
       dashboard.hidden = false;
+      placeLoginButton(true);
       sidebarToggle.hidden = true;
       dashboardButton.hidden = true;
       projectSettingsButton.hidden = true;
@@ -3094,6 +3107,7 @@
 
   async function initialize() {
     try {
+      placeLoginButton(!dashboard.hidden);
       clearLegacyOAuthCallback();
       const saved = await readRecord('files', fileId(repoName || 'local', branchName, activePath)).catch(() => {
         logActivity('Lokale Datei konnte nicht aus IndexedDB gelesen werden; localStorage-Fallback wird verwendet.');
@@ -3111,7 +3125,7 @@
       await registerServiceWorker();
       updateProjectProperties();
       branchSelect.value = branchName;
-      updateLoginButton();
+      placeLoginButton(!dashboard.hidden);
       setStatus(restoreError || (navigator.onLine ? 'Editor bereit. Änderungen werden lokal automatisch gespeichert.' : 'Offline-Modus: lokale Bearbeitung ist aktiv.'));
     } catch (error) {
       logActivity('App-Initialisierung fehlgeschlagen.');
